@@ -1,0 +1,75 @@
+---
+title: "Data Harvesting final"
+format: html
+editor: visual
+---
+
+pakcages
+
+```{r echo=FALSE}
+#install.packages("scrapex")
+#install.packages("magrittr")
+library(scrapex)
+library(xml2)
+library(magrittr)
+library(lubridate)
+library(dplyr)
+library(tidyr)
+
+```
+
+```{r}
+sider_link<- "http://sideeffects.embl.de/drugs/"
+```
+
+## Setting up Selenium browser
+
+To do before
+
+-   Download Java [here](https://www.oracle.com/java/technologies/downloads/)
+
+-   Ask for Java location on terminal\>\> where java
+
+-   Download Firefox [here](https://www.mozilla.org/es-ES/firefox/new/)
+
+Run the following code for attaching JAVA
+
+```{r attach Java}
+#Sys.getenv("JAVA_HOME")
+#Sys.setenv(JAVA_HOME = "C:/Program Files (x86)/Common Files/Oracle/ava/javapath/java.exe") 
+#Sys.getenv("PATH")
+#install.packages("RSelenium", dependencies=TRUE)
+
+
+```
+
+Now quit and re star R before running the the next chunk of code.
+
+As described before, Selenium tries to mimic a human. This literally means that we need to open a browser. In RSelenium we do that with the rsDriver function. This function initializes the browser and opens it for us:
+
+```{r set up Selenium browser}
+library(RSelenium)
+
+remDr <- rsDriver(port = 4448L, 
+                  #If port is taken just try dif. value
+                  browser = "firefox",
+                  verbose=F,
+                  chromever=NULL)
+```
+
+`RSelenium` opened a browser which you **don\'t need to touch**. Everything you do on this browser will be performed using the object `remDr`, where the browser was initiated. `remDr` has a property called `client` from where you can `navigate` to a website.
+
+```{r}
+remDr$client$navigate("http://sideeffects.embl.de/drugs/")
+
+```
+
+## Navigating our site
+
+Let\'s find the XPath expression that will return the position of the first blog post name. We\'re looking for this `<a>` tag which would be the equivalent of \'clicking\' on the blog post.
+
+```{r}
+sider_link |> 
+  read_html() |> 
+  xml_find_all("")
+```
