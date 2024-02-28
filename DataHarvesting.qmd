@@ -15,6 +15,10 @@ library(magrittr)
 library(lubridate)
 library(dplyr)
 library(tidyr)
+library(httr)
+library(rvest)
+library(janitor)
+
 
 ```
 
@@ -50,26 +54,53 @@ As described before, Selenium tries to mimic a human. This literally means that 
 ```{r set up Selenium browser}
 library(RSelenium)
 
-remDr <- rsDriver(port = 4448L, 
+remDr <- rsDriver(port = 4445L, 
                   #If port is taken just try dif. value
                   browser = "firefox",
                   verbose=F,
                   chromever=NULL)
+
 ```
 
 `RSelenium` opened a browser which you **don\'t need to touch**. Everything you do on this browser will be performed using the object `remDr`, where the browser was initiated. `remDr` has a property called `client` from where you can `navigate` to a website.
 
-```{r}
-remDr$client$navigate("http://sideeffects.embl.de/drugs/")
+```{r navigating the link}
+remDr$client$navigate(sider_link)
 
 ```
 
 ## Navigating our site
 
-Let\'s find the XPath expression that will return the position of the first blog post name. We\'re looking for this `<a>` tag which would be the equivalent of \'clicking\' on the blog post.
 
 ```{r}
+
+driver <- remDr$client
+
 sider_link |> 
   read_html() |> 
   xml_find_all("")
+
+driver$findElement(value = "")$clickElement()
+
+
+```
+
+
+## Scraping itself
+
+Here I'm trying the link for Desflurane (N01AB)
+
+```{r scraping a table}
+
+link1<- "http://sideeffects.embl.de/drugs/42113/"
+
+#Get all tables from website
+table<- link1 |> 
+  read_html() |> 
+  html_table()
+
+#Extract only table 1, as it is the one with the data we want.
+desflurane <-  table[[1]] |> 
+  dplyr::select(`Side effect`, `Data for drug`) |> 
+  clean_names() 
 ```
