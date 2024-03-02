@@ -29,8 +29,7 @@ library(tidyverse)
 sider_link<- "http://sideeffects.embl.de/drugs/"
 ```
 
-docker pull selenium/standalone-firefox:2.53.0
-sido docker -d -p 4445:4444 selenium/standalone-firefox:2.53.0
+docker pull selenium/standalone-firefox:2.53.0 sido docker -d -p 4445:4444 selenium/standalone-firefox:2.53.0
 
 ## Setting up Selenium browser
 
@@ -59,7 +58,7 @@ As described before, Selenium tries to mimic a human. This literally means that 
 
 A port is just a number. they represent channels through which the computer communicates. When we deploy a docker image, we assign it a port to 'talk' through.
 
-The output the following code will gives is just telling us which drivers it is currently downloading. 
+The output the following code will gives is just telling us which drivers it is currently downloading.
 
 ```{r set up Selenium browser}
 library(RSelenium)
@@ -81,7 +80,9 @@ remDr$client$navigate(sider_link)
 ```
 
 ## Navigating our site
-We will use `client ` a lot, so we will save it in our `driver` object. 
+
+We will use `client` a lot, so we will save it in our `driver` object.
+
 ```{r}
 driver <- remDr$client
 
@@ -93,7 +94,16 @@ page_source <- driver$getPageSource()[[1]]
 
 ```
 
-With the HTML code as a string, we’re on familiar ground. We can use read_html to read it.
+## Some more pre scrapping: building URLs for each drug
+
+With the HTML code as a string, we're on familiar ground. We can use read_html to read it.
+
+Note that this is the code for a drug. All other drugs in the webpage will follow under the same structure.
+
+| `<a class="dynatree-title" onclick="gotoDrug('1972')" onmouseover="popDrugNfo('Amphotericin B')" onmouseout="cClick()" href="#">Amphotericin B</a>`
+
+From this html, we are interesting in fetching the numeric ID of each drug. In the example above this is 1972.
+
 ```{r}
 # Define a regular expression pattern to extract information
 pattern <- '<a class="dynatree-title" onclick="gotoDrug\\(\'(\\d+)\'\\)" onmouseover="popDrugNfo\\(\'([^\']+)\'\\)" onmouseout="cClick\\(\\)" href="#">([^<]+)</a>'
@@ -101,17 +111,16 @@ pattern <- '<a class="dynatree-title" onclick="gotoDrug\\(\'(\\d+)\'\\)" onmouse
 # Find all matches in the HTML source code
 matches <- str_match_all(page_source, pattern)
 
-# Flatten the list of matches
-matches <- unlist(matches, recursive = FALSE)
-
 # Create a data frame from the matches
 matches <- data.frame(matches)
 
+matches <- matches |> 
+  rename(hmtl = X1,
+         drug_id = X2,
+         drug_name = X3 ) |> 
+  dplyr::select(-X4)
+
 ```
-
-
-```<a class="dynatree-title" onclick="gotoDrug('1972')" onmouseover="popDrugNfo('Amphotericin B')" onmouseout="cClick()" href="#">Amphotericin B</a>```
-
 
 ## Scraping
 
