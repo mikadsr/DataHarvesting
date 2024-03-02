@@ -118,7 +118,14 @@ matches <- matches |>
   rename(hmtl = X1,
          drug_id = X2,
          drug_name = X3 ) |> 
-  dplyr::select(-X4)
+  dplyr::select(-X4) |> 
+  distinct(drug_id)
+
+```
+
+```{r}
+# Build the links for each medication
+drug_links <- paste0("http://sideeffects.embl.de/drugs/", matches$drug_id, "/")
 
 ```
 
