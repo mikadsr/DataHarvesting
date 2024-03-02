@@ -19,6 +19,8 @@ library(httr)
 library(rvest)
 library(janitor)
 library(stringr)
+library(stringr)
+library(tidyverse)
 
 
 ```
@@ -62,7 +64,7 @@ The output the following code will gives is just telling us which drivers it is 
 ```{r set up Selenium browser}
 library(RSelenium)
 
-remDr <- rsDriver(port = 4444L, 
+remDr <- rsDriver(port = 4446L, 
                   #If port is taken just try dif. value
                   browser = "firefox",
                   verbose=F,
@@ -89,14 +91,27 @@ driver$findElement(value = "(//*[@id='toggleExpand'])")$clickElement()
 #Then we get the source code of the web into an HTML string
 page_source <- driver$getPageSource()[[1]]
 
-#With the HTML code as a string, we’re on familiar ground. We can use read_html to read it.
-html_code <-
-  page_source |> 
-  read_html()
+```
 
+With the HTML code as a string, we’re on familiar ground. We can use read_html to read it.
+```{r}
+# Define a regular expression pattern to extract information
+pattern <- '<a class="dynatree-title" onclick="gotoDrug\\(\'(\\d+)\'\\)" onmouseover="popDrugNfo\\(\'([^\']+)\'\\)" onmouseout="cClick\\(\\)" href="#">([^<]+)</a>'
 
+# Find all matches in the HTML source code
+matches <- str_match_all(page_source, pattern)
+
+# Flatten the list of matches
+matches <- unlist(matches, recursive = FALSE)
+
+# Create a data frame from the matches
+matches <- data.frame(matches)
 
 ```
+
+
+```<a class="dynatree-title" onclick="gotoDrug('1972')" onmouseover="popDrugNfo('Amphotericin B')" onmouseout="cClick()" href="#">Amphotericin B</a>```
+
 
 ## Scraping
 
