@@ -18,6 +18,7 @@ library(tidyr)
 library(httr)
 library(rvest)
 library(janitor)
+library(stringr)
 
 
 ```
@@ -25,6 +26,9 @@ library(janitor)
 ```{r}
 sider_link<- "http://sideeffects.embl.de/drugs/"
 ```
+
+docker pull selenium/standalone-firefox:2.53.0
+sido docker -d -p 4445:4444 selenium/standalone-firefox:2.53.0
 
 ## Setting up Selenium browser
 
@@ -51,10 +55,14 @@ Now quit and re star R before running the the next chunk of code.
 
 As described before, Selenium tries to mimic a human. This literally means that we need to open a browser. In RSelenium we do that with the rsDriver function. This function initializes the browser and opens it for us:
 
+A port is just a number. they represent channels through which the computer communicates. When we deploy a docker image, we assign it a port to 'talk' through.
+
+The output the following code will gives is just telling us which drivers it is currently downloading. 
+
 ```{r set up Selenium browser}
 library(RSelenium)
 
-remDr <- rsDriver(port = 4445L, 
+remDr <- rsDriver(port = 4444L, 
                   #If port is taken just try dif. value
                   browser = "firefox",
                   verbose=F,
@@ -62,31 +70,35 @@ remDr <- rsDriver(port = 4445L,
 
 ```
 
-`RSelenium` opened a browser which you **don\'t need to touch**. Everything you do on this browser will be performed using the object `remDr`, where the browser was initiated. `remDr` has a property called `client` from where you can `navigate` to a website.
+`RSelenium` opened a browser which you **don't need to touch**. Everything you do on this browser will be performed using the object `remDr`, where the browser was initiated.`remDr` has a property called `client` from where you can `navigate` to a website.
 
 ```{r navigating the link}
 remDr$client$navigate(sider_link)
 
+
 ```
 
 ## Navigating our site
-
-
+We will use `client ` a lot, so we will save it in our `driver` object. 
 ```{r}
-
 driver <- remDr$client
 
-sider_link |> 
-  read_html() |> 
-  xml_find_all("")
+driver$findElement(value = "(//*[@id='toggleExpand'])")$clickElement()
 
-driver$findElement(value = "")$clickElement()
+
+#Then we get the source code of the web into an HTML string
+page_source <- driver$getPageSource()[[1]]
+
+#With the HTML code as a string, we’re on familiar ground. We can use read_html to read it.
+html_code <-
+  page_source |> 
+  read_html()
+
 
 
 ```
 
-
-## Scraping itself
+## Scraping
 
 Here I'm trying the link for Desflurane (N01AB)
 
@@ -102,5 +114,11 @@ table<- link1 |>
 #Extract only table 1, as it is the one with the data we want.
 desflurane <-  table[[1]] |> 
   dplyr::select(`Side effect`, `Data for drug`) |> 
-  clean_names() 
+  clean_names() |> 
+  filter(!grepl("postmarketing", data_for_drug, ignore.case = TRUE)) |> 
+  filter(across(everything(), ~ !is.na(.) & !(. == "")))
+
+
+desflurane 
+
 ```
