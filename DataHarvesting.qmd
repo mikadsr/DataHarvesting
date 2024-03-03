@@ -22,7 +22,6 @@ library(stringr)
 library(stringr)
 library(tidyverse)
 
-
 ```
 
 ```{r}
@@ -118,31 +117,203 @@ matches <- matches |>
   rename(hmtl = X1,
          drug_id = X2,
          drug_name = X3 ) |> 
-  dplyr::select(-X4)
+  dplyr::select(-X4) |> 
+  distinct(drug_id, .keep_all = T) 
 
+```
+
+```{r}
+# Build the links for each medication
+drug_links <- paste0("http://sideeffects.embl.de/drugs/", matches$drug_id, "/")
+
+# Adding drug_links to matches
+matches <- matches |> 
+  mutate(link = drug_links)
 ```
 
 ## Scraping
 
-Here I'm trying the link for Desflurane (N01AB)
+### Testing
 
-```{r scraping a table}
+We start by running a couple of tests to see if it works.
 
-link1<- "http://sideeffects.embl.de/drugs/42113/"
+```{r scraping a table. ex1}
 
-#Get all tables from website
-table<- link1 |> 
+link1 <- "http://sideeffects.embl.de/drugs/42113/"
+
+# Get all tables from website
+table <- link1 |> 
   read_html() |> 
   html_table()
 
-#Extract only table 1, as it is the one with the data we want.
-desflurane <-  table[[1]] |> 
+# Extract table 1: side effects
+desflurane_s <-  table[[1]] |> 
   dplyr::select(`Side effect`, `Data for drug`) |> 
   clean_names() |> 
   filter(!grepl("postmarketing", data_for_drug, ignore.case = TRUE)) |> 
-  filter(across(everything(), ~ !is.na(.) & !(. == "")))
+  filter(across(everything(), ~ !is.na(.) & !(. == ""))) |> 
+  mutate(drug_name = "desflurane")
+
+# Extract table 1: indications
+desflurane_i <- tibble(table[[2]][[1]]) |> 
+  set_names("indication") |> 
+  clean_names() |> 
+  filter(across(everything(), ~ !is.na(.) & !(. == ""))) |> 
+  mutate(drug_name = "desflurane") 
+
+```
+
+In the following test we delete `filter(across(everything(), ~ !is.na(.) & !(. == "")))` as it returns a table with 0 observations and we are interested in the side effects even if they don't have associated `data_for_drug` values. OR NOT???
+
+```{r scraping a table. ex2}
+
+link2 <- "http://sideeffects.embl.de/drugs/2812/"
+
+# Get all tables from website
+table2 <- link2 |> 
+  read_html() |> 
+  html_table()
+
+# Extract table 1: side effects
+clotrimazol_s <-  table2[[1]] |> 
+  dplyr::select(`Side effect`, `Data for drug`) |> 
+  clean_names() |> 
+  filter(!grepl("postmarketing", data_for_drug, ignore.case = TRUE)) |> 
+  # filter(across(everything(), ~ !is.na(.) & !(. == ""))) |> 
+  mutate(drug_name = "amphotericin")
+
+# Extract table 1: indications
+clotrimazol_s <- tibble(table2[[2]][[1]]) |> 
+  set_names("indication") |> 
+   clean_names() %>%
+  filter(across(everything(), ~ !is.na(.) & !(. == ""))) %>%
+  mutate(drug_name = "desflurane") 
+```
+
+Then we create a loop and test it in a random sample of 100 links. In here we also delete the line of code mentioned before.
+
+```{r}
+# Obtain a random sample of 100 unique links
+sampled_indices <- sample(nrow(matches), 100, replace = FALSE)
+sampled_matches <- matches[sampled_indices, ]
+
+# Create lists to store the results
+side_effects_tablesS <- list()
+indications_tablesS <- list()
+
+# Iterate over each row of the "sampled_matches" table
+for (i in seq_len(nrow(sampled_matches))) {
+  # Get the medication name and link from the current row
+  drug_name <- sampled_matches$drug_name[i]
+  link <- sampled_matches$link[i]
+  
+  # Read and process the link for side effects
+  table <- link |> 
+    read_html() |> 
+    html_table()
+  side_effects <-  table[[1]] |> 
+    dplyr::select(`Side effect`, `Data for drug`) |> 
+    clean_names() |> 
+    filter(!grepl("postmarketing", data_for_drug, ignore.case = TRUE)) |> 
+    # filter(across(everything(), ~ !is.na(.) & !(. == ""))) |> 
+    mutate(drug_name = drug_name)
+  
+  # Store the result in the side effects tables list
+  side_effects_tables[[i]] <- side_effects
+  
+  # Read and process the link for indications
+  table <- link |> 
+    read_html() |> 
+    html_table()
+  indications <- tibble(table[[2]][[1]]) |> 
+    set_names("indication") |> 
+    clean_names() %>%
+    filter(across(everything(), ~ !is.na(.) & !(. == ""))) %>%
+    mutate(drug_name = drug_name) 
+  
+  # Store the result in the indications tables list
+  indications_tables[[i]] <- indications
+}
+
+  # Assign names to the tables. 
+    # WE WOULD ONLY NEED THIS IF WE WANT TO KEEP SEPARATE TABLES FOR EACH DRUG
+  # names(side_effects_tablesS) <- paste0(matches$drug_name, "_s")
+  # names(indications_tablesS) <- paste0(matches$drug_name, "_i")
 
 
-desflurane 
+# Convert the "data_for_drug" column to character in all tables of side_effects_tablesS
+side_effects_tablesS <- lapply(side_effects_tables, function(tbl) {
+  tbl$data_for_drug <- as.character(tbl$data_for_drug)
+  return(tbl)
+})
+
+# Combine all tables of side effects into a single table
+side_effectsS <- bind_rows(side_effects_tables)
+
+# Combine all tables of indications into a single table
+indicationsS <- bind_rows(indications_tables)
+
+```
+
+### Actual scraping
+
+Finally, here is the code for scraping all the links.
+
+```{r}
+# Create lists to store the results
+side_effects_tables <- list()
+indications_tables <- list()
+
+# Iterate over each row of the "matches" table
+for (i in seq_len(nrow(matches))) {
+  # Get the medication name and link from the current row
+  drug_name <- matches$drug_name[i]
+  link <- matches$link[i]
+  
+  # Read and process the link for side effects
+  table <- link |> 
+    read_html() |> 
+    html_table()
+  side_effects <-  table[[1]] |> 
+    dplyr::select(`Side effect`, `Data for drug`) |> 
+    clean_names() |> 
+    filter(!grepl("postmarketing", data_for_drug, ignore.case = TRUE)) |> 
+   # filter(across(everything(), ~ !is.na(.) & !(. == ""))) |> ????
+    mutate(drug_name = drug_name)
+  
+  # Store the result in the side effects tables list
+  side_effects_tables[[i]] <- side_effects
+  
+  # Read and process the link for indications
+  table <- link |> 
+    read_html() |> 
+    html_table()
+  indications <- tibble(table[[2]][[1]]) |> 
+    set_names("indication") |> 
+    clean_names() %>%
+    filter(across(everything(), ~ !is.na(.) & !(. == ""))) %>%
+    mutate(drug_name = drug_name) 
+  
+  # Store the result in the indications tables list
+  indications_tables[[i]] <- indications
+}
+
+  # Assign names to the tables
+      # WE WOULD ONLY NEED THIS IF WE WANT TO KEEP SEPARATE TABLES FOR EACH DRUG
+  # names(side_effects_tables) <- paste0(matches$drug_name, "_s")
+  # names(indications_tables) <- paste0(matches$drug_name, "_i")
+
+
+# Convert the "data_for_drug" column to character in all tables of side_effects_tables
+side_effects_tables <- lapply(side_effects_tables, function(tbl) {
+  tbl$data_for_drug <- as.character(tbl$data_for_drug)
+  return(tbl)
+})
+
+# Combine all tables of side effects into a single table
+side_effects <- bind_rows(side_effects_tables)
+
+# Combine all tables of indications into a single table
+indications <- bind_rows(indications_tables)
 
 ```
