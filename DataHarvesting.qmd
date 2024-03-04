@@ -318,6 +318,26 @@ indications <- bind_rows(indications_tables)
 
 ```
 
+### Getting ATC codes
+
+```{r}
+link2<- "http://sideeffects.embl.de/drugs/1972/"
+
+result<- link2 |> 
+  read_html() |> 
+  html_nodes("p") |> 
+  html_children() |> 
+  html_text(trim = T)
+
+link2 |> 
+  read_html() |> 
+  html_nodes("p") |> 
+  html_children() |> 
+  html_text(trim = T) 
+
+#need to figure out how to keep only items after "ATC Code" and before "Options:"
+```
+
 ## OCDE data
 
 OCDE Health Statistics database includes data on total pharmaceutical consumption according to the Anatomical Therapeutic Chemical (ATC) classification/Defined Daily Dose (DDD) system, created by the WHO Collaborating Centre for Drug Statistics Methodology.
@@ -325,7 +345,7 @@ OCDE Health Statistics database includes data on total pharmaceutical consumptio
 The ATC classification system divides drugs into different groups according to the organ system on which they act and/or therapeutical, pharmacological and chemical characteristics:
 
 |                                                                       |                        |
-|---------------------------------------|----------------------------|
+|------------------------------------------|------------------------------|
 | **Main groups**                                                       | **Codes (2023 Index)** |
 | A-Alimentary tract and metabolism                                     | A                      |
 | Antacids                                                              | A02A                   |
