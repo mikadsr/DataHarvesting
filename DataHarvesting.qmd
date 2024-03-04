@@ -317,3 +317,58 @@ side_effects <- bind_rows(side_effects_tables)
 indications <- bind_rows(indications_tables)
 
 ```
+
+## OCDE data
+
+OCDE Health Statistics database includes data on total pharmaceutical consumption according to the Anatomical Therapeutic Chemical (ATC) classification/Defined Daily Dose (DDD) system, created by the WHO Collaborating Centre for Drug Statistics Methodology.
+
+The ATC classification system divides drugs into different groups according to the organ system on which they act and/or therapeutical, pharmacological and chemical characteristics:
+
+|                                                                       |                        |
+|---------------------------------------|----------------------------|
+| **Main groups**                                                       | **Codes (2023 Index)** |
+| A-Alimentary tract and metabolism                                     | A                      |
+| Antacids                                                              | A02A                   |
+| Drugs for peptic ulcer and gastro-oesophageal reflux diseases (GORD)  | A02B                   |
+| Drugs used in diabetes                                                | A10                    |
+| B-Blood and blood forming organs                                      | B                      |
+| C-Cardiovascular system                                               | C                      |
+| Cardiac glycosides                                                    | C01A                   |
+| Antiarrhythmics, Class I and III                                      | C01B                   |
+| Antihypertensives                                                     | C02                    |
+| Diuretics                                                             | C03                    |
+| Beta blocking agents                                                  | C07                    |
+| Calcium channel blockers                                              | C08                    |
+| Agents acting on the Renin-Angiotensin system                         | C09                    |
+| Lipid modifying agents                                                | C10                    |
+| G-Genito urinary system and sex hormones                              | G                      |
+| Sex hormones and modulators of the genital system                     | G03                    |
+| H-Systemic hormonal preparations, excluding sex hormones and insulins | H                      |
+| J-Antiinfectives for systemic use                                     | J                      |
+| Antibacterials for systemic use                                       | J01                    |
+| M-Musculo-skeletal system                                             | M                      |
+| Antiinflammatory and antirheumatic products non-steroids              | M01A                   |
+| N-Nervous system Analgesics Anxiolytics                               | N                      |
+| Analgesics                                                            | N02                    |
+| Anxiolytics                                                           | N05B                   |
+| Hypnotics and sedatives Antidepressants                               | N05C                   |
+| Antidepressants                                                       | N06A                   |
+| R-Respiratory system                                                  | R                      |
+| Drugs for obstructive airway diseases                                 | R03                    |
+
+We are working with the data from the most recent year available. The unit of measure if defined daily dosage per 1.000 inhabitants per day
+
+```{r}
+ocde <- read.csv("HEALTH_PHMC.csv")
+
+ocde <- ocde |> 
+  select(-c(VAR, UNIT, Measure, YEA, Flag.Codes, Flags)) |> 
+  filter(Year == 2021) |> 
+  rename(ISO = COU) |> 
+  separate(Variable, 
+           into = c("Varcode", "Variable"), 
+           sep = "-", 
+           extra = "merge") |> 
+  clean_names()
+
+```
