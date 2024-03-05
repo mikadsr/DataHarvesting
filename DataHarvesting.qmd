@@ -47,8 +47,6 @@ Run the following code for attaching JAVA
 #Sys.setenv(JAVA_HOME = "C:/Program Files (x86)/Common Files/Oracle/ava/javapath/java.exe") 
 #Sys.getenv("PATH")
 #install.packages("RSelenium", dependencies=TRUE)
-
-
 ```
 
 Now quit and re star R before running the the next chunk of code.
@@ -74,7 +72,6 @@ remDr <- rsDriver(port = 4446L,
 
 ```{r navigating the link}
 remDr$client$navigate(sider_link)
-
 
 ```
 
@@ -179,7 +176,7 @@ clotrimazol_s <-  table2[[1]] |>
   dplyr::select(`Side effect`, `Data for drug`) |> 
   clean_names() |> 
   filter(!grepl("postmarketing", data_for_drug, ignore.case = TRUE)) |> 
-  # filter(across(everything(), ~ !is.na(.) & !(. == ""))) |> 
+  filter(across(everything(), ~ !is.na(.) & !(. == ""))) |> 
   mutate(drug_name = "amphotericin")
 
 # Extract table 1: indications
@@ -211,28 +208,28 @@ for (i in seq_len(nrow(sampled_matches))) {
   table <- link |> 
     read_html() |> 
     html_table()
-  side_effects <-  table[[1]] |> 
+  side_effectsS <-  table[[1]] |> 
     dplyr::select(`Side effect`, `Data for drug`) |> 
     clean_names() |> 
     filter(!grepl("postmarketing", data_for_drug, ignore.case = TRUE)) |> 
-    # filter(across(everything(), ~ !is.na(.) & !(. == ""))) |> 
+    filter(across(everything(), ~ !is.na(.) & !(. == ""))) |> 
     mutate(drug_name = drug_name)
   
   # Store the result in the side effects tables list
-  side_effects_tables[[i]] <- side_effects
+  side_effects_tablesS[[i]] <- side_effectsS
   
   # Read and process the link for indications
   table <- link |> 
     read_html() |> 
     html_table()
-  indications <- tibble(table[[2]][[1]]) |> 
+  indicationsS <- tibble(table[[2]][[1]]) |> 
     set_names("indication") |> 
     clean_names() %>%
     filter(across(everything(), ~ !is.na(.) & !(. == ""))) %>%
     mutate(drug_name = drug_name) 
   
   # Store the result in the indications tables list
-  indications_tables[[i]] <- indications
+  indications_tablesS[[i]] <- indicationsS
 }
 
   # Assign names to the tables. 
@@ -242,16 +239,16 @@ for (i in seq_len(nrow(sampled_matches))) {
 
 
 # Convert the "data_for_drug" column to character in all tables of side_effects_tablesS
-side_effects_tablesS <- lapply(side_effects_tables, function(tbl) {
+side_effects_tablesS <- lapply(side_effects_tablesS, function(tbl) {
   tbl$data_for_drug <- as.character(tbl$data_for_drug)
   return(tbl)
 })
 
 # Combine all tables of side effects into a single table
-side_effectsS <- bind_rows(side_effects_tables)
+side_effectsS <- bind_rows(side_effects_tablesS)
 
 # Combine all tables of indications into a single table
-indicationsS <- bind_rows(indications_tables)
+indicationsS <- bind_rows(indications_tablesS)
 
 ```
 
@@ -278,7 +275,7 @@ for (i in seq_len(nrow(matches))) {
     dplyr::select(`Side effect`, `Data for drug`) |> 
     clean_names() |> 
     filter(!grepl("postmarketing", data_for_drug, ignore.case = TRUE)) |> 
-   # filter(across(everything(), ~ !is.na(.) & !(. == ""))) |> ????
+    filter(across(everything(), ~ !is.na(.) & !(. == ""))) |> ????
     mutate(drug_name = drug_name)
   
   # Store the result in the side effects tables list
@@ -318,25 +315,90 @@ indications <- bind_rows(indications_tables)
 
 ```
 
-### Getting ATC codes
+### Getting ATC code
 
-```{r}
+```{r getting atc codes}
 link2<- "http://sideeffects.embl.de/drugs/1972/"
 
-result<- link2 |> 
-  read_html() |> 
-  html_nodes("p") |> 
-  html_children() |> 
-  html_text(trim = T)
-
-link2 |> 
-  read_html() |> 
-  html_nodes("p") |> 
-  html_children() |> 
-  html_text(trim = T) 
-
-#need to figure out how to keep only items after "ATC Code" and before "Options:"
+atc_codes<- link2 |>
+  read_html() |>
+  html_nodes("strong:contains('ATC Code') + a") |>
+  html_text(trim = TRUE)
 ```
+
+now that we figured out the code, we can store it in a function for its easy reuse and apply it to our sampled_matches dataframe.
+
+```{r function for getting atc codes}
+
+extrct_ATC_codes  <- function(url) {
+  result <- url %>%
+    read_html() %>%
+    html_nodes("strong:contains('ATC Code') + a") %>%
+    html_text(trim = TRUE)
+
+  return(result)
+}
+
+sampled_matches$atc_codes <- lapply(sampled_matches$link,
+                       extrct_ATC_codes)
+
+```
+
+## 
+
+## Recodification
+
+| Frequency class | Intervention cohort- clinical trials frequency | Assigned value |
+|----------------|---------------------------------------|----------------|
+| very frequent   | More than 10%                                  | 5              |
+| frequent        | 1 to 10%                                       | 4              |
+| infrequent      | 0.1 to 1%                                      | 3              |
+| rare            | 0.01 to 0.1%                                   | 2              |
+| very rare       | Less than 0.01%                                | 1              |
+| zeros\*         | 0%                                             | 0              |
+
+
+```{r ass_values to words}
+# Function to extract ONLY words
+extract_words <- function(text) {
+  str_extract_all(text, "(?<!\\d)[a-zA-Z]+(?:\\s+[a-zA-Z]+)*") |> 
+    map_chr(~ ifelse(length(.x) > 0, paste(.x, collapse = ", "), NA_character_))
+}
+
+# Apply the function to the data_for_drug column
+side_effectsS <- side_effectsS |> 
+  mutate(words_only = extract_words(data_for_drug)) |> 
+  # Filter out rows with NA values or containing the word "to" in words_only 
+  filter(!is.na(words_only), 
+         words_only != "to")
+
+
+side_effectsS <- side_effectsS |> 
+  # Splitting the words before and after the comma into two new columns
+  separate(words_only, into = c("words_only", "after_comma"), 
+           sep = ",", 
+           remove = FALSE) |> 
+  # Removing any additional whitespace around the words after the comma
+  mutate(across(c(after_comma), trimws),
+         # Assigning numerical values to the words in both variables
+         across(c(words_only, after_comma), 
+                ~ case_when(
+                  . %in% c("very frequent", "very common") ~ 5,
+                  . %in% c("frequent", "common") ~ 4,
+                  . == "infrequent" ~ 3,
+                  . %in% c("rare", "uncommon") ~ 2,
+                  . %in% c("very rare", "very uncommon") ~ 1,
+                  TRUE ~ NA_real_)),
+         # Calculating the mean value between "words_only_value" and "after_comma_value"
+         mean_value = (words_only + after_comma) / 2,
+         # Assigning values to the "ass_value" column based on specified conditions
+         ass_value = ifelse(is.na(mean_value), words_only, ceiling(mean_value))) |> 
+  # Deleting the columns we no longer need
+  select(-c(words_only, after_comma, mean_value))
+```
+
+
+
 
 ## OCDE data
 
