@@ -4,11 +4,9 @@ format: html
 editor: visual
 ---
 
-pakcages
+We start by uploading the packages we are going to need
 
 ```{r echo=FALSE}
-#install.packages("scrapex")
-#install.packages("magrittr")
 library(scrapex)
 library(xml2)
 library(magrittr)
@@ -19,10 +17,11 @@ library(httr)
 library(rvest)
 library(janitor)
 library(stringr)
-library(stringr)
 library(tidyverse)
 
 ```
+
+From now on, `sider_link` is the name we have assigned to the general page we are scraping the data from. However, mirar como explico esto xq no idea.
 
 ```{r}
 sider_link<- "http://sideeffects.embl.de/drugs/"
@@ -134,7 +133,7 @@ matches <- matches |>
 
 We start by running a couple of tests to see if it works.
 
-```{r scraping a table. ex1}
+```{r scraping a table. test 1}
 
 link1 <- "http://sideeffects.embl.de/drugs/42113/"
 
@@ -148,21 +147,21 @@ desflurane_s <-  table[[1]] |>
   dplyr::select(`Side effect`, `Data for drug`) |> 
   clean_names() |> 
   filter(!grepl("postmarketing", data_for_drug, ignore.case = TRUE)) |> 
-  filter(across(everything(), ~ !is.na(.) & !(. == ""))) |> 
+  filter(if_all(everything(), ~ !is.na(.) & !(. == ""))) |> 
   mutate(drug_name = "desflurane")
 
 # Extract table 1: indications
 desflurane_i <- tibble(table[[2]][[1]]) |> 
   set_names("indication") |> 
   clean_names() |> 
-  filter(across(everything(), ~ !is.na(.) & !(. == ""))) |> 
+  filter(if_all(everything(), ~ !is.na(.) & !(. == ""))) |> 
   mutate(drug_name = "desflurane") 
 
 ```
 
 In the following test we delete `filter(across(everything(), ~ !is.na(.) & !(. == "")))` as it returns a table with 0 observations and we are interested in the side effects even if they don't have associated `data_for_drug` values. OR NOT???
 
-```{r scraping a table. ex2}
+```{r scraping a table. test 2}
 
 link2 <- "http://sideeffects.embl.de/drugs/2812/"
 
@@ -176,20 +175,21 @@ clotrimazol_s <-  table2[[1]] |>
   dplyr::select(`Side effect`, `Data for drug`) |> 
   clean_names() |> 
   filter(!grepl("postmarketing", data_for_drug, ignore.case = TRUE)) |> 
-  filter(across(everything(), ~ !is.na(.) & !(. == ""))) |> 
-  mutate(drug_name = "amphotericin")
+  filter(if_all(everything(), ~ !is.na(.) & !(. == ""))) |> 
+  mutate(drug_name = "clotrimazol")
 
 # Extract table 1: indications
-clotrimazol_s <- tibble(table2[[2]][[1]]) |> 
+clotrimazol_i <- tibble(table2[[2]][[1]]) |> 
   set_names("indication") |> 
-   clean_names() %>%
-  filter(across(everything(), ~ !is.na(.) & !(. == ""))) %>%
-  mutate(drug_name = "desflurane") 
+   clean_names() |> 
+  filter(if_all(everything(), ~ !is.na(.) & !(. == ""))) |> 
+  mutate(drug_name = "clotrimazol") 
+
 ```
 
-Then we create a loop and test it in a random sample of 100 links. In here we also delete the line of code mentioned before.
+Then we create a loop and test it in a random sample of 100 links.
 
-```{r}
+```{r scraping a sample. test3}
 # Obtain a random sample of 100 unique links
 sampled_indices <- sample(nrow(matches), 100, replace = FALSE)
 sampled_matches <- matches[sampled_indices, ]
@@ -212,7 +212,7 @@ for (i in seq_len(nrow(sampled_matches))) {
     dplyr::select(`Side effect`, `Data for drug`) |> 
     clean_names() |> 
     filter(!grepl("postmarketing", data_for_drug, ignore.case = TRUE)) |> 
-    filter(across(everything(), ~ !is.na(.) & !(. == ""))) |> 
+    filter(if_all(everything(), ~ !is.na(.) & !(. == ""))) |> 
     mutate(drug_name = drug_name)
   
   # Store the result in the side effects tables list
@@ -224,19 +224,13 @@ for (i in seq_len(nrow(sampled_matches))) {
     html_table()
   indicationsS <- tibble(table[[2]][[1]]) |> 
     set_names("indication") |> 
-    clean_names() %>%
-    filter(across(everything(), ~ !is.na(.) & !(. == ""))) %>%
+    clean_names() |> 
+    filter(if_all(everything(), ~ !is.na(.) & !(. == ""))) |> 
     mutate(drug_name = drug_name) 
   
   # Store the result in the indications tables list
   indications_tablesS[[i]] <- indicationsS
 }
-
-  # Assign names to the tables. 
-    # WE WOULD ONLY NEED THIS IF WE WANT TO KEEP SEPARATE TABLES FOR EACH DRUG
-  # names(side_effects_tablesS) <- paste0(matches$drug_name, "_s")
-  # names(indications_tablesS) <- paste0(matches$drug_name, "_i")
-
 
 # Convert the "data_for_drug" column to character in all tables of side_effects_tablesS
 side_effects_tablesS <- lapply(side_effects_tablesS, function(tbl) {
@@ -256,7 +250,7 @@ indicationsS <- bind_rows(indications_tablesS)
 
 Finally, here is the code for scraping all the links.
 
-```{r}
+```{r final scraping process}
 # Create lists to store the results
 side_effects_tables <- list()
 indications_tables <- list()
@@ -275,7 +269,7 @@ for (i in seq_len(nrow(matches))) {
     dplyr::select(`Side effect`, `Data for drug`) |> 
     clean_names() |> 
     filter(!grepl("postmarketing", data_for_drug, ignore.case = TRUE)) |> 
-    filter(across(everything(), ~ !is.na(.) & !(. == ""))) |> ????
+    filter(if_all(everything(), ~ !is.na(.) & !(. == ""))) |> 
     mutate(drug_name = drug_name)
   
   # Store the result in the side effects tables list
@@ -287,19 +281,13 @@ for (i in seq_len(nrow(matches))) {
     html_table()
   indications <- tibble(table[[2]][[1]]) |> 
     set_names("indication") |> 
-    clean_names() %>%
-    filter(across(everything(), ~ !is.na(.) & !(. == ""))) %>%
+    clean_names() |> 
+    filter(if_all(everything(), ~ !is.na(.) & !(. == ""))) |> 
     mutate(drug_name = drug_name) 
   
   # Store the result in the indications tables list
   indications_tables[[i]] <- indications
 }
-
-  # Assign names to the tables
-      # WE WOULD ONLY NEED THIS IF WE WANT TO KEEP SEPARATE TABLES FOR EACH DRUG
-  # names(side_effects_tables) <- paste0(matches$drug_name, "_s")
-  # names(indications_tables) <- paste0(matches$drug_name, "_i")
-
 
 # Convert the "data_for_drug" column to character in all tables of side_effects_tables
 side_effects_tables <- lapply(side_effects_tables, function(tbl) {
@@ -317,8 +305,8 @@ indications <- bind_rows(indications_tables)
 
 ### Getting ATC code
 
-```{r getting atc codes}
-link2<- "http://sideeffects.embl.de/drugs/1972/"
+```{r getting atc codes. test1}
+link2 <- "http://sideeffects.embl.de/drugs/1972/"
 
 atc_codes<- link2 |>
   read_html() |>
@@ -329,11 +317,10 @@ atc_codes<- link2 |>
 now that we figured out the code, we can store it in a function for its easy reuse and apply it to our sampled_matches dataframe.
 
 ```{r function for getting atc codes}
-
 extrct_ATC_codes  <- function(url) {
-  result <- url %>%
-    read_html() %>%
-    html_nodes("strong:contains('ATC Code') + a") %>%
+  result <- url |> 
+    read_html() |> 
+    html_nodes("strong:contains('ATC Code') + a") |> 
     html_text(trim = TRUE)
 
   return(result)
@@ -344,12 +331,20 @@ sampled_matches$atc_codes <- lapply(sampled_matches$link,
 
 ```
 
-## 
+we just want to keep the first letter of the ATC code since is the biggest category and what we are actually interested in. Bare in mind that the OCDE data gathers information for all of this big categories but not for the subcategories, which could lead to biases in our analysis. no sé pensar mejor esto.
 
-## Recodification
+```{r}
+sampled_matches <- sampled_matches |> 
+  mutate(atc_codes = substr(atc_codes, 1, 1))
+
+sampled_matches
+
+```
+
+## Recodification of side_effects
 
 | Frequency class | Intervention cohort- clinical trials frequency | Assigned value |
-|----------------|---------------------------------------|----------------|
+|------------------|------------------------------------|------------------|
 | very frequent   | More than 10%                                  | 5              |
 | frequent        | 1 to 10%                                       | 4              |
 | infrequent      | 0.1 to 1%                                      | 3              |
@@ -357,6 +352,35 @@ sampled_matches$atc_codes <- lapply(sampled_matches$link,
 | very rare       | Less than 0.01%                                | 1              |
 | zeros\*         | 0%                                             | 0              |
 
+incluir en la explicación del código: If the max value is NA, it takes the min value. Otherwise, it calculates the average of min and max, and then multiplies the result by 100.
+
+```{r ass_values to numbers}
+filtered_rows <- side_effectsS |> 
+  # Filter rows based on the presence of '-' or '%' in data_for_drug and absence of ','
+  filter(grepl("-|%", data_for_drug) & !grepl(",", data_for_drug)) |> 
+  # Remove '%' from data_for_drug column
+  mutate(data_for_drug = gsub("%", "", data_for_drug)) |> 
+  # Split data_for_drug into min and max columns
+  separate(data_for_drug, into = c("min", "max"), sep = "-") |> 
+  # Convert min and max columns to numeric and express as decimals
+  mutate(across(c(min, max), ~as.numeric(.)*0.01)) |> 
+  # Calculate occu_freq as mean of min and max, handling NA values
+  mutate(occu_freq = ifelse(is.na(max), min,
+                            ifelse(is.na(min), max,
+                                   (min + max) / 2)) * 100 / 5) |> 
+  # Calculate ass_value based on specified ranges
+  mutate(ass_value = case_when(
+    occu_freq > 2 ~ 5,
+    occu_freq >= 0.2 ~ 4,
+    occu_freq >= 0.02 ~ 2,
+    occu_freq >= 0.002 ~ 1,
+    occu_freq == 0 ~ 0,
+    TRUE ~ NA_real_
+  )) |> 
+  # Remove min and max columns
+  select(-c(min, max, occu_freq))
+
+```
 
 ```{r ass_values to words}
 # Function to extract ONLY words
@@ -366,14 +390,11 @@ extract_words <- function(text) {
 }
 
 # Apply the function to the data_for_drug column
-side_effectsS <- side_effectsS |> 
+filtered_rows2 <- side_effectsS |> 
   mutate(words_only = extract_words(data_for_drug)) |> 
   # Filter out rows with NA values or containing the word "to" in words_only 
   filter(!is.na(words_only), 
-         words_only != "to")
-
-
-side_effectsS <- side_effectsS |> 
+         words_only != "to") |> 
   # Splitting the words before and after the comma into two new columns
   separate(words_only, into = c("words_only", "after_comma"), 
            sep = ",", 
@@ -394,11 +415,23 @@ side_effectsS <- side_effectsS |>
          # Assigning values to the "ass_value" column based on specified conditions
          ass_value = ifelse(is.na(mean_value), words_only, ceiling(mean_value))) |> 
   # Deleting the columns we no longer need
-  select(-c(words_only, after_comma, mean_value))
+  select(-c(words_only, after_comma, mean_value, data_for_drug))
+
 ```
 
+Finally, we combine the new datasets:
 
+```{r}
+sampled_side_effects <- bind_rows(filtered_rows, filtered_rows2)
 
+sampled_side_effects <- merge(sampled_matches, sampled_side_effects, by = "drug_name", all = TRUE)
+
+sampled_side_effects <- sampled_side_effects |> 
+  na.omit(ass_values) |> 
+  select(-c(hmtl, link, drug_id)) |> 
+  arrange(atc_codes)
+
+```
 
 ## OCDE data
 
@@ -410,33 +443,14 @@ The ATC classification system divides drugs into different groups according to t
 |------------------------------------------|------------------------------|
 | **Main groups**                                                       | **Codes (2023 Index)** |
 | A-Alimentary tract and metabolism                                     | A                      |
-| Antacids                                                              | A02A                   |
-| Drugs for peptic ulcer and gastro-oesophageal reflux diseases (GORD)  | A02B                   |
-| Drugs used in diabetes                                                | A10                    |
 | B-Blood and blood forming organs                                      | B                      |
 | C-Cardiovascular system                                               | C                      |
-| Cardiac glycosides                                                    | C01A                   |
-| Antiarrhythmics, Class I and III                                      | C01B                   |
-| Antihypertensives                                                     | C02                    |
-| Diuretics                                                             | C03                    |
-| Beta blocking agents                                                  | C07                    |
-| Calcium channel blockers                                              | C08                    |
-| Agents acting on the Renin-Angiotensin system                         | C09                    |
-| Lipid modifying agents                                                | C10                    |
 | G-Genito urinary system and sex hormones                              | G                      |
-| Sex hormones and modulators of the genital system                     | G03                    |
 | H-Systemic hormonal preparations, excluding sex hormones and insulins | H                      |
 | J-Antiinfectives for systemic use                                     | J                      |
-| Antibacterials for systemic use                                       | J01                    |
 | M-Musculo-skeletal system                                             | M                      |
-| Antiinflammatory and antirheumatic products non-steroids              | M01A                   |
 | N-Nervous system Analgesics Anxiolytics                               | N                      |
-| Analgesics                                                            | N02                    |
-| Anxiolytics                                                           | N05B                   |
-| Hypnotics and sedatives Antidepressants                               | N05C                   |
-| Antidepressants                                                       | N06A                   |
 | R-Respiratory system                                                  | R                      |
-| Drugs for obstructive airway diseases                                 | R03                    |
 
 We are working with the data from the most recent year available. The unit of measure if defined daily dosage per 1.000 inhabitants per day
 
@@ -451,6 +465,6 @@ ocde <- ocde |>
            into = c("Varcode", "Variable"), 
            sep = "-", 
            extra = "merge") |> 
+  filter(nchar(Varcode) == 1) |> 
   clean_names()
-
 ```
