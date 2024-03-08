@@ -4,6 +4,16 @@ format: html
 editor: visual
 ---
 
+-   Pregunta de investigación // objetivos
+
+-   las categorías ATC de los side effects de SIDER no coinciden al 100% con las de OCDE: SIDER incluye 5 más (D, L, P, S, V).
+
+-   atc codes and recodification: cambiar de sampled_matches a matches.
+
+-   recodification: introducción
+
+-   visualización lo q sea
+
 We start by uploading the packages we are going to need
 
 ```{r echo=FALSE}
@@ -31,30 +41,28 @@ docker pull selenium/standalone-firefox:2.53.0 sido docker -d -p 4445:4444 selen
 
 ## Setting up Selenium browser
 
-To do before
+Selenium is a powerful automation tool that can be used for web scraping tasks. By automating interactions with web pages, Selenium can navigate through complex web structures, fill out forms, click buttons, and extract desired information from HTML elements. Selenium supports multiple programming languages such as Java, Python, JavaScript, and R. To make the most of its capabilities, it is important to complete these steps first:
 
--   Download Java [here](https://www.oracle.com/java/technologies/downloads/)
+1.  Download and install Java from the official website.
 
--   Ask for Java location on terminal\>\> where java
+2.  Use the terminal or command prompt to determine the location of Java by executing the command: **`where java`**.
 
--   Download Firefox [here](https://www.mozilla.org/es-ES/firefox/new/)
+3.  Download and install the Firefox web browser from the official website.
 
-Run the following code for attaching JAVA
+4.  Run the following code to configure RSelenium to use Java:
 
 ```{r attach Java}
-#Sys.getenv("JAVA_HOME")
-#Sys.setenv(JAVA_HOME = "C:/Program Files (x86)/Common Files/Oracle/ava/javapath/java.exe") 
-#Sys.getenv("PATH")
-#install.packages("RSelenium", dependencies=TRUE)
+# Sys.getenv("JAVA_HOME")
+# Sys.setenv(JAVA_HOME = "C:/Program Files (x86)/Common Files/Oracle/ava/javapath/java.exe") 
+# Sys.getenv("PATH")
+# install.packages("RSelenium", dependencies=TRUE)
 ```
 
-Now quit and re star R before running the the next chunk of code.
+Before proceeding with the next code chunk, we quit and restart R.
 
-As described before, Selenium tries to mimic a human. This literally means that we need to open a browser. In RSelenium we do that with the rsDriver function. This function initializes the browser and opens it for us:
+`RSelenium` simulates human behavior by opening a browser. In RSelenium, this is accomplished using the `rsDriver` function, which initializes the browser and opens it for us. It does so by using a port, which is a numerical identifier that represent communication channels between computers. When deploying a Docker image, we assign it a port through which it can communicate with other systems.
 
-A port is just a number. they represent channels through which the computer communicates. When we deploy a docker image, we assign it a port to 'talk' through.
-
-The output the following code will gives is just telling us which drivers it is currently downloading.
+The output of the following code will indicate the drivers that are currently being downloaded. This is essential for ensuring that the necessary drivers are available for the web browser to function correctly during the web scraping process.
 
 ```{r set up Selenium browser}
 library(RSelenium)
@@ -67,39 +75,53 @@ remDr <- rsDriver(port = 4446L,
 
 ```
 
-`RSelenium` opened a browser which you **don't need to touch**. Everything you do on this browser will be performed using the object `remDr`, where the browser was initiated.`remDr` has a property called `client` from where you can `navigate` to a website.
+`RSelenium` opened a browser which we don't need to touch, as everything will be performed using the object `remDr`, where the browser was initiated. Moreover, `remDr` has a property called `client` from where we can `navigate` to our website. Since we will be using this property several times, we stored it in an object named `driver`.
 
 ```{r navigating the link}
 remDr$client$navigate(sider_link)
 
+# Save client in our 'driver' object
+driver <- remDr$client
 ```
 
 ## Navigating our site
 
-We will use `client` a lot, so we will save it in our `driver` object.
+[SIDER 4.1: Side Effect Resource](http://sideeffects.embl.de/) is a web page that contains information on marketed medicines and their recorded adverse drug reactions. The information is extracted from public documents and package inserts. The available information include side effect frequency, drug and side effect classifications as well as links to further information, for example drug–target relations. The *Drug list* section includes an option to browse drugs by Anatomical Therapeutic Chemical (ATC) classification. It divides drugs into different groups according to the organ system on which they act and/or therapeutical, pharmacological and chemical characteristics. **INCLUIR UNA TABLA CON LOS QUE TIENEN?** These ATC classifications are organized into dropdown menus, which contain the items of interest.
 
-```{r}
-driver <- remDr$client
+With the developer's tools (CTRL+SHIFT+C or CMD+SHIFT+C for Mac users), we can access the HTML code behind the website. We are interested in extracting all the drugs associated with the different ATC categories. However, unless we click on the drop-down menu (called 'Expand all nodes'), those drugs won't be displayed in the source code of the website, and we would not have access to the variables we are actually interested in. This is the main reason we use `RSelenium`: since our website is interactive, in order to scrape data we need a software program that will click on required places.
 
+After examining the HTML code and finding the XPath expression for the 'Expand all nodes' button, we are able to locate it in `RSelenium` and click on it. We use our driver object with `findElement` (to position the browser pointer exactly where we want) and `clickElement` (to click on said element). Once all the information is displayed in the source code of the website after using `getPageSource`, we save it into an HTML string that will be later used for the scraping process.
+
+```{r getting the source code}
+# Ask Selenium to click on the expand all button
 driver$findElement(value = "(//*[@id='toggleExpand'])")$clickElement()
 
-
-#Then we get the source code of the web into an HTML string
+# Save the source code of the web into an HTML string
 page_source <- driver$getPageSource()[[1]]
 
 ```
 
-## Some more pre scrapping: building URLs for each drug
+## Some more pre scraping: building URLs for each drug
 
-With the HTML code as a string, we're on familiar ground. We can use read_html to read it.
+However, even after using `RSelenium` to click on the drop down menu, we still don't have the information necessary to access the URL for each drug. To do so, we first need to find a pattern in the HTML code that give as information about this.
 
-Note that this is the code for a drug. All other drugs in the webpage will follow under the same structure.
+When we initially explored the SIDER page, we noticed a consistent pattern in the URLs for each drug: following the general link of the page, there was a unique number or code that corresponded to each drug. We regarded this number the numeric ID of the drug. For instance, the link for the drug Amphotericin B was <http://sideeffects.embl.de/drugs/1972/>, with '1972' representing its ID. This ID is solely present in the URL for each drug, as there is no available list to reference all of them. Since our goal is to scrap data for each drug, we need to access each individual link and, consequently, identify their IDs to build all the links.
+
+With the HTML code parsed as a string, we used `read_html` to process it. After carefully examining it multiple times, we identified a consistent pattern. **QUÉ COSAS BUSCAMOS ESPECÍFICAMENTE? tipo la vaina** **de** <a> **etc**
+
+The XPath below represents the code for a drug, Amphotericin B. However, we observed that all other drugs in the webpage followed under the same structure:
 
 | `<a class="dynatree-title" onclick="gotoDrug('1972')" onmouseover="popDrugNfo('Amphotericin B')" onmouseout="cClick()" href="#">Amphotericin B</a>`
 
-From this html, we are interesting in fetching the numeric ID of each drug. In the example above this is 1972.
+As seen above, `onclick="gotoDrug('1972')` corresponds to the numeric ID of the drug, while `onmouseover="popDrugNfo('Amphotericin B')` refers to its name. After identifying this pattern, we defined a regular expression named "pattern" to extract this information from the HTML source code using `str_match_all`. Then, we constructed a data frame named "matches", which included the following details:
 
-```{r}
+-   'html': the HTML pattern.
+
+-   'drug_id': the numeric ID.
+
+-   'drug_name': the drug name.
+
+```{r finding patterns}
 # Define a regular expression pattern to extract information
 pattern <- '<a class="dynatree-title" onclick="gotoDrug\\(\'(\\d+)\'\\)" onmouseover="popDrugNfo\\(\'([^\']+)\'\\)" onmouseout="cClick\\(\\)" href="#">([^<]+)</a>'
 
@@ -107,41 +129,47 @@ pattern <- '<a class="dynatree-title" onclick="gotoDrug\\(\'(\\d+)\'\\)" onmouse
 matches <- str_match_all(page_source, pattern)
 
 # Create a data frame from the matches
-matches <- data.frame(matches)
-
-matches <- matches |> 
-  rename(hmtl = X1,
+matches <- data.frame(matches) |> 
+  rename(html = X1,
          drug_id = X2,
-         drug_name = X3 ) |> 
+         drug_name = X3) |> 
   dplyr::select(-X4) |> 
-  distinct(drug_id, .keep_all = T) 
+  distinct(drug_id, .keep_all = TRUE)
 
 ```
 
-```{r}
+After this crucial step, we are finally able to build the links from which we will be scraping the data. To achieve this, we paste together the general link followed by each drug ID available in `matches`, followed by a slash (/). Finally, we add another column to `matches` to store all the links alongside their respective drug names and IDs.
+
+```{r building links}
 # Build the links for each medication
 drug_links <- paste0("http://sideeffects.embl.de/drugs/", matches$drug_id, "/")
 
-# Adding drug_links to matches
+# Add drug_links to matches
 matches <- matches |> 
   mutate(link = drug_links)
+
 ```
 
-## Scraping
+## Web scraping
 
-### Testing
+### Testing: individual tests
 
-We start by running a couple of tests to see if it works.
+Before proceeding with the code for all drugs, we conduct preliminary tests using two specific drugs: Desflurane and Clotrimazol. The procedure for both drugs is identical. Initially, we retrieve the HTML code for each drug page and extract all available tables. Then, we extract the side effects table, `table[[1]]`, and the indications table, `table[[2]]`. This allows us to ensure that the code functions correctly for individual drugs before scaling it up to a bigger sample.
 
-```{r scraping a table. test 1}
+We start by defining the URL `link1`, which corresponds to Desflurane. `read_html()` retrieves the HTML content of the webpage, from where we extract all the tables present on the webpage by using `html_table()`. This step allows us to capture all the relevant information available in tabular format.
 
+```{r scraping test 1. html}
 link1 <- "http://sideeffects.embl.de/drugs/42113/"
 
-# Get all tables from website
 table <- link1 |> 
   read_html() |> 
   html_table()
 
+```
+
+After extracting the tables, we access the first table using `table[[1]]`, which contains information about the side effects associated with the drug. We then select only the relevant columns, such as 'Side effect' and 'Data for drug' (which represents the incidence of the corresponding side effect). Additionally, we filter out rows where the 'Data for drug' column contains the term "postmarketing", as these entries may not be directly relevant to the drug's primary effects. Furthermore, we apply a filter using `if_all()` to remove rows where any column contains missing values or empty strings. Finally, we add a new column named 'drug_name' to identify the drug associated with the side effects table, which in this case is "desflurane".
+
+```{r scraping test 1. extracting tables}
 # Extract table 1: side effects
 desflurane_s <-  table[[1]] |> 
   dplyr::select(`Side effect`, `Data for drug`) |> 
@@ -150,7 +178,12 @@ desflurane_s <-  table[[1]] |>
   filter(if_all(everything(), ~ !is.na(.) & !(. == ""))) |> 
   mutate(drug_name = "desflurane")
 
-# Extract table 1: indications
+```
+
+Similarly, we extract the second table from the webpage, which contains information about drug indications. We create a tibble from the second table's first column using `tibble(table[[2]][[1]])`, as the variable 'Indications' is repeated three times and we just want to keep one of those columns. We also filter out rows with missing values or empty strings using `if_all()`. Finally, we add a "drug_name" column to identify the drug associated with the indications table, which is again "desflurane".
+
+```{r scraping test 1. extracting tables}
+# Extract table 2: indications
 desflurane_i <- tibble(table[[2]][[1]]) |> 
   set_names("indication") |> 
   clean_names() |> 
@@ -159,9 +192,9 @@ desflurane_i <- tibble(table[[2]][[1]]) |>
 
 ```
 
-In the following test we delete `filter(across(everything(), ~ !is.na(.) & !(. == "")))` as it returns a table with 0 observations and we are interested in the side effects even if they don't have associated `data_for_drug` values. OR NOT???
+In the chunk of code below, this process is repeated for the drug Clotrimazol, just to test if it certainly works. **MAYBE PODRÍAMOS QUITAR ESTE SEGUNDO EJEMPLO Y PASAR DIRECTAMENTE AL SAMPLE**
 
-```{r scraping a table. test 2}
+```{r scraping test 2}
 
 link2 <- "http://sideeffects.embl.de/drugs/2812/"
 
@@ -178,7 +211,7 @@ clotrimazol_s <-  table2[[1]] |>
   filter(if_all(everything(), ~ !is.na(.) & !(. == ""))) |> 
   mutate(drug_name = "clotrimazol")
 
-# Extract table 1: indications
+# Extract table 2: indications
 clotrimazol_i <- tibble(table2[[2]][[1]]) |> 
   set_names("indication") |> 
    clean_names() |> 
@@ -187,17 +220,35 @@ clotrimazol_i <- tibble(table2[[2]][[1]]) |>
 
 ```
 
-Then we create a loop and test it in a random sample of 100 links.
+In conclusion, these chunks of code are designed to systematically extract relevant information about side effects and indications for a specific drug from the SIDER website, ensuring data cleanliness and consistency for further analysis.
 
-```{r scraping a sample. test3}
+### Testing: creating a random sample
+
+To ensure the accuracy of our scraping process before proceeding with all 1117 drug links, we created a sample dataset. This sample allows us to test our scraping code within a loop, ensuring that it functions correctly. By applying the code to a smaller subset of data first, we can identify any potential issues or errors and make necessary adjustments before running the code on the entire dataset, minimizing errors and ensuring the reliability of our scraping process.
+
+We start by obtaining a random sample of 100 unique links from the "matches" table. This is achieved by generating a random sample of row indices using the `sample()` function. The `replace = FALSE` argument ensures that each index is selected only once, thus ensuring uniqueness. We then use these sampled indices to subset the "matches" table, resulting in a new data frame called "sampled_matches".
+
+```{r scraping a sample. random sampling}
 # Obtain a random sample of 100 unique links
 sampled_indices <- sample(nrow(matches), 100, replace = FALSE)
 sampled_matches <- matches[sampled_indices, ]
 
+```
+
+The next step involves creating empty lists to store the results of scraping: one for side effects tables (`side_effects_tablesS`) and another for indications tables (`indications_tablesS`). These lists will be populated with the scraped data from each link.
+
+```{r scraping a sample. lists}
 # Create lists to store the results
 side_effects_tablesS <- list()
 indications_tablesS <- list()
 
+```
+
+We then iterate over each row of the "sampled_matches" table using a for loop. Within each iteration, we extract the drug name and link from the current row. The drug name is used to identify the drug associated with the scraped data, while the link is used to access the webpage containing the information.
+
+For each link, we scrape two tables (side effects and indications) following the process described in the previous section. After processing, both the side effects and indications tables for each drug are stored in their respective lists (`side_effects_tablesS` and `indications_tablesS`).
+
+```{r scraping a sample. for loop}
 # Iterate over each row of the "sampled_matches" table
 for (i in seq_len(nrow(sampled_matches))) {
   # Get the medication name and link from the current row
@@ -232,6 +283,11 @@ for (i in seq_len(nrow(sampled_matches))) {
   indications_tablesS[[i]] <- indicationsS
 }
 
+```
+
+Following the scraping process, we convert the 'data_for_drug' column to character type in all tables of the `side_effects_tablesS` list to ensure consistency. Finally, we combine all tables of side effects into a single table named, `side_effectsS`, and similarly, we combine all tables of indications into a single table, `indicationsS`.
+
+```{r scraping a sample. final tables}
 # Convert the "data_for_drug" column to character in all tables of side_effects_tablesS
 side_effects_tablesS <- lapply(side_effects_tablesS, function(tbl) {
   tbl$data_for_drug <- as.character(tbl$data_for_drug)
@@ -248,13 +304,20 @@ indicationsS <- bind_rows(indications_tablesS)
 
 ### Actual scraping
 
-Finally, here is the code for scraping all the links.
+Finally, following the successful tests conducted earlier, we proceed with scraping the entire set of links. The process remains consistent with the steps described in the preceding section. The first step involves creating empty lists to store the results of scraping: one for side effects tables (`side_effects_tables`) and another for indications tables (`indications_tables`). These lists will be populated with the scraped data from each link.
 
-```{r final scraping process}
+```{r final scraping. lists}
 # Create lists to store the results
 side_effects_tables <- list()
 indications_tables <- list()
 
+```
+
+We then iterate over each row of the "matches" table using a for loop. Within each iteration, we extract the drug name and link from the current row. The drug name is used to identify the drug associated with the scraped data, while the link is used to access the webpage containing the information.
+
+For each link, we scrape two tables (side effects and indications) following the process described in "Testing: individual tests". After processing, both the side effects and indications tables for each drug are stored in their respective lists (`side_effects_tables` and `indications_tables`).
+
+```{r final scraping. for loop}
 # Iterate over each row of the "matches" table
 for (i in seq_len(nrow(matches))) {
   # Get the medication name and link from the current row
@@ -289,6 +352,11 @@ for (i in seq_len(nrow(matches))) {
   indications_tables[[i]] <- indications
 }
 
+```
+
+Following the scraping process, we convert the 'data_for_drug' column to character type in all tables of the `side_effects_tables` list to ensure consistency. Finally, we combine all tables of side effects into a single table named, `side_effects`, and similarly, we combine all tables of indications into a single table, `indications`.
+
+```{r final scraping. for loop}
 # Convert the "data_for_drug" column to character in all tables of side_effects_tables
 side_effects_tables <- lapply(side_effects_tables, function(tbl) {
   tbl$data_for_drug <- as.character(tbl$data_for_drug)
@@ -303,9 +371,13 @@ indications <- bind_rows(indications_tables)
 
 ```
 
-### Getting ATC code
+### Getting ATC codes
 
-```{r getting atc codes. test1}
+While setting the objectives of our assignment, we recognized the potential of leveraging the Anatomical Therapeutic Chemical (ATC) classification for our data analysis objectives. This classification system is present both on the SIDER web page, from which we've scraped data, and in the OCDE dataset we'll be utilizing (which will be described later on). However, during the initial scraping process of SIDER, which primarily focused on retrieving tables, we did not capture these ATC codes. Therefore, we need to come up with a different method to get them.
+
+As we have been doing throughout this entire paper, we begin with a preliminary trial using just one link. We read the source code of the page using `read_html` and experimented with various XPath expressions until we found the one that captures the information we are interested in.
+
+```{r getting atc codes. test}
 link2 <- "http://sideeffects.embl.de/drugs/1972/"
 
 atc_codes<- link2 |>
@@ -314,26 +386,30 @@ atc_codes<- link2 |>
   html_text(trim = TRUE)
 ```
 
-now that we figured out the code, we can store it in a function for its easy reuse and apply it to our sampled_matches dataframe.
+After figuring out the exact XPath, we store it in a function for its easy reuse and apply it to our matches data frame. This function extracts the ATC codes from a given URL. It reads the HTML content of the webpage, locates the element containing the ATC codes using XPath, and then extracts the text of the ATC codes. Finally, it returns the extracted ATC codes as a character vector.
 
-```{r function for getting atc codes}
+```{r getting atc codes. function}
 extrct_ATC_codes  <- function(url) {
   result <- url |> 
     read_html() |> 
     html_nodes("strong:contains('ATC Code') + a") |> 
     html_text(trim = TRUE)
-
   return(result)
 }
 
+```
+
+This line of code applies the `extract_ATC_codes` function to each link in the `sampled_matches` dataset using `lapply`. It creates a new column named `atc_codes` in `sampled_matches`, where each entry corresponds to a list of ATC codes extracted from the respective link.
+
+```{r getting atc codes. applying function}
 sampled_matches$atc_codes <- lapply(sampled_matches$link,
                        extrct_ATC_codes)
 
 ```
 
-we just want to keep the first letter of the ATC code since is the biggest category and what we are actually interested in. Bare in mind that the OCDE data gathers information for all of this big categories but not for the subcategories, which could lead to biases in our analysis. no sé pensar mejor esto.
+This code modifies the `atc_codes` column in the `sampled_matches` dataset, keeping only the first letter of each ATC code. This action is taken because we are primarily interested in the main categories represented by these letters, as they align with the broader classifications used in the OCDE data. By retaining only the first letter, we aim to mitigate potential biases that could arise from analyzing subcategories, which are not covered comprehensively in the OCDE dataset. **Y QUITAMOS LAS QUE NO ESTÁN EN OCDE?? (D, L, P, S, V)**
 
-```{r}
+```{r getting atc codes. cleaning}
 sampled_matches <- sampled_matches |> 
   mutate(atc_codes = substr(atc_codes, 1, 1))
 
@@ -341,10 +417,14 @@ sampled_matches
 
 ```
 
-## Recodification of side_effects
+## Preparing for data analysis: recodification of side_effects
+
+Habrá que citar este trabajo.
+
+Mapping of frequency values to frequency classes and to frequency values:
 
 | Frequency class | Intervention cohort- clinical trials frequency | Assigned value |
-|------------------|------------------------------------|------------------|
+|-------------------|----------------------------------|-------------------|
 | very frequent   | More than 10%                                  | 5              |
 | frequent        | 1 to 10%                                       | 4              |
 | infrequent      | 0.1 to 1%                                      | 3              |
@@ -352,23 +432,20 @@ sampled_matches
 | very rare       | Less than 0.01%                                | 1              |
 | zeros\*         | 0%                                             | 0              |
 
-incluir en la explicación del código: If the max value is NA, it takes the min value. Otherwise, it calculates the average of min and max, and then multiplies the result by 100.
+We initially process rows containing numerical values in the 'data_for_drug' column. By splitting this data into 'min' and 'max' columns and expressing them as decimals of a percentage, we calculate the occurrence frequency ('occu_freq'). If both 'min' and 'max' values are available, we calculate the mean; otherwise, we use whichever value is present. These frequency values are then scaled to a 0-100 scale, representing the range from 0 to 5 in frequency classes.
+
+Subsequently, we assign an 'ass_value' based on predefined frequency class ranges. This ensures that very frequent occurrences receive the highest value (5), very rare or zero occurrences receive the lowest (0), and any remaining frequencies are labeled as NA.
 
 ```{r ass_values to numbers}
+# Filter rows based on the presence of '-' or '%' in data_for_drug and absence of ','
 filtered_rows <- side_effectsS |> 
-  # Filter rows based on the presence of '-' or '%' in data_for_drug and absence of ','
   filter(grepl("-|%", data_for_drug) & !grepl(",", data_for_drug)) |> 
-  # Remove '%' from data_for_drug column
   mutate(data_for_drug = gsub("%", "", data_for_drug)) |> 
-  # Split data_for_drug into min and max columns
   separate(data_for_drug, into = c("min", "max"), sep = "-") |> 
-  # Convert min and max columns to numeric and express as decimals
   mutate(across(c(min, max), ~as.numeric(.)*0.01)) |> 
-  # Calculate occu_freq as mean of min and max, handling NA values
   mutate(occu_freq = ifelse(is.na(max), min,
                             ifelse(is.na(min), max,
                                    (min + max) / 2)) * 100 / 5) |> 
-  # Calculate ass_value based on specified ranges
   mutate(ass_value = case_when(
     occu_freq > 2 ~ 5,
     occu_freq >= 0.2 ~ 4,
@@ -377,31 +454,34 @@ filtered_rows <- side_effectsS |>
     occu_freq == 0 ~ 0,
     TRUE ~ NA_real_
   )) |> 
-  # Remove min and max columns
   select(-c(min, max, occu_freq))
 
 ```
 
-```{r ass_values to words}
+Next, we focus on extracting only words from the 'data_for_drug' column to further standardize the representation. We utilize a custom function, 'extract_words', to achieve this.
+
+```{r ass_values to words. function}
 # Function to extract ONLY words
 extract_words <- function(text) {
   str_extract_all(text, "(?<!\\d)[a-zA-Z]+(?:\\s+[a-zA-Z]+)*") |> 
     map_chr(~ ifelse(length(.x) > 0, paste(.x, collapse = ", "), NA_character_))
 }
 
+```
+
+Afterward, we filter out rows with NA values or those containing the word "to" in the 'words_only' column. Then, we split the words before and after the comma into two new columns and assign numerical values to these words based on a predefined table. Any remaining frequencies are labeled as NA, and the mean value between both columns is calculated. Finally, the 'ass_value' column stores the final value, which is the rounded mean to the highest value.
+
+```{r ass_values to words}
 # Apply the function to the data_for_drug column
 filtered_rows2 <- side_effectsS |> 
   mutate(words_only = extract_words(data_for_drug)) |> 
-  # Filter out rows with NA values or containing the word "to" in words_only 
   filter(!is.na(words_only), 
          words_only != "to") |> 
   # Splitting the words before and after the comma into two new columns
   separate(words_only, into = c("words_only", "after_comma"), 
            sep = ",", 
            remove = FALSE) |> 
-  # Removing any additional whitespace around the words after the comma
   mutate(across(c(after_comma), trimws),
-         # Assigning numerical values to the words in both variables
          across(c(words_only, after_comma), 
                 ~ case_when(
                   . %in% c("very frequent", "very common") ~ 5,
@@ -410,22 +490,20 @@ filtered_rows2 <- side_effectsS |>
                   . %in% c("rare", "uncommon") ~ 2,
                   . %in% c("very rare", "very uncommon") ~ 1,
                   TRUE ~ NA_real_)),
-         # Calculating the mean value between "words_only_value" and "after_comma_value"
          mean_value = (words_only + after_comma) / 2,
-         # Assigning values to the "ass_value" column based on specified conditions
          ass_value = ifelse(is.na(mean_value), words_only, ceiling(mean_value))) |> 
-  # Deleting the columns we no longer need
   select(-c(words_only, after_comma, mean_value, data_for_drug))
 
 ```
 
-Finally, we combine the new datasets:
+This meticulous process ensures a consistent representation of side effects frequency and associated values for further analysis. To complete the data preparation, we combine these two datasets and merge them with the 'matches' dataset. In the final 'side_effects' table, we remove rows where 'ass_value' contains missing values and eliminate variables unnecessary for data analysis, such as 'html', 'link', and 'drug_id'.
 
-```{r}
+```{r final side_effects}
+# Bind and merge
 sampled_side_effects <- bind_rows(filtered_rows, filtered_rows2)
-
 sampled_side_effects <- merge(sampled_matches, sampled_side_effects, by = "drug_name", all = TRUE)
 
+# Filter and clean side_effects
 sampled_side_effects <- sampled_side_effects |> 
   na.omit(ass_values) |> 
   select(-c(hmtl, link, drug_id)) |> 
@@ -433,11 +511,11 @@ sampled_side_effects <- sampled_side_effects |>
 
 ```
 
-## OCDE data
+## Cleaning OCDE data
 
-OCDE Health Statistics database includes data on total pharmaceutical consumption according to the Anatomical Therapeutic Chemical (ATC) classification/Defined Daily Dose (DDD) system, created by the WHO Collaborating Centre for Drug Statistics Methodology.
+[*OCDE Health Statistics database*](http://www.oecd.org/health/health-data.htm) includes data on total pharmaceutical consumption according to the Anatomical Therapeutic Chemical (ATC) classification/Defined Daily Dose (DDD) system, created by the WHO Collaborating Centre for Drug Statistics Methodology. The ATC classification system divides drugs into different groups according to the organ system on which they act and/or therapeutical, pharmacological and chemical characteristics. The publication “ATC Index with DDDs” lists all assigned ATC codes and DDD values. Both publications are updated annually.
 
-The ATC classification system divides drugs into different groups according to the organ system on which they act and/or therapeutical, pharmacological and chemical characteristics:
+In the table below you can find a glimpse of the groups we have chosen for the current analysis. The ATC codes included are based on the 2023 version of the ATC Index.
 
 |                                                                       |                        |
 |------------------------------------------|------------------------------|
@@ -452,7 +530,15 @@ The ATC classification system divides drugs into different groups according to t
 | N-Nervous system Analgesics Anxiolytics                               | N                      |
 | R-Respiratory system                                                  | R                      |
 
-We are working with the data from the most recent year available. The unit of measure if defined daily dosage per 1.000 inhabitants per day
+In their website they have a 'Data explorer**'** that allows you to pick variables, while also picking the country/years of data you want and download that custom data set for yourself. You can find the whole dataset [here](https://data-explorer.oecd.org/vis?tm=pharmaceutical%20consumption&pg=0&hc[Measure]=Pharmaceutical%20consumption&snb=33&vw=tb&df[ds]=dsDisseminateFinalDMZ&df[id]=HEALTH_PHMC%40DF_PHMC_CONSUM&df[ag]=OECD.ELS.HD&df[vs]=1.0&pd=2021%2C&dq=.PH_CON...A&to[TIME_PERIOD]=false&ly[rw]=REF_AREA&ly[cl]=TIME_PERIOD). However, we decided to download the whole data set and clean the data to keep only the information we are interested in:
+
+-   'Year': we will be working with the data from the most recent year available,
+
+-   'Country' and 'COU' (renamed as 'iso', since it is the ISO code),
+
+-   'Variable': later separated into 'code', which we will be using for the analysis, and 'variable', a description of the code,
+
+-   'Value': the unit of measure is Defined Daily Dosage (DDD) per 1.000 inhabitants per day. DDD is defined as the assumed average per maintenance dose per day for a drug used on its main indication in adults.
 
 ```{r}
 ocde <- read.csv("HEALTH_PHMC.csv")
