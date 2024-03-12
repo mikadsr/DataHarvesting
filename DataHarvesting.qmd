@@ -216,7 +216,6 @@ desflurane_s <-  table[[1]] |>
   filter(if_all(everything(), ~ !is.na(.) & !(. == ""))) |> 
   mutate(drug_name = "desflurane")
 
-rm(table)
 head(desflurane_s)
 
 ```
@@ -228,7 +227,7 @@ Similarly, we extract the second table from the webpage, which contains informat
 desflurane_i <- tibble(table[[2]][[1]]) |> 
   set_names("indication") |> 
   clean_names() |> 
-  filter(if_all(everything(), ~ !is.na(.) & !(. == ""))) |> 
+  filter(if_all(everything(), ~ !is.na(.) & !(. == ""))) |>
   mutate(drug_name = "desflurane") 
 
 head(desflurane_i)
@@ -284,7 +283,7 @@ for (i in seq_len(nrow(sampled_matches))) {
     mutate(drug_name = drug_name)
   
   # Store the result in the side effects tables list
-  side_effects_tablesS[[i]] <- side_effects_sample
+  side_effects_tables_sample[[i]] <- side_effects_sample
   
   # Read and process the link for indications
   table <- link |> 
@@ -306,7 +305,7 @@ Following the scraping process, we convert the 'data_for_drug' column to charact
 
 ```{r scraping a sample. final tables}
 # Convert the "data_for_drug" column to character in all tables of side_effects_tablesS
-side_effects_tables_sample<- lapply(side_effects_tablesS, function(tbl) {
+side_effects_tables_sample<- lapply(side_effects_tables_sample, function(tbl) {
   tbl$data_for_drug <- as.character(tbl$data_for_drug)
   return(tbl)
 })
@@ -590,8 +589,21 @@ sampled_side_effects <- merge(sampled_matches, sampled_side_effects, by = "drug_
 # Filter and clean side_effects
 sampled_side_effects <- sampled_side_effects |> 
   na.omit(ass_values) |> 
-  select(-c(hmtl, link, drug_id)) |> 
+  #select(-c(hmtl, link, drug_id)) |> 
   arrange(atc_codes)
+
+```
+
+#### Matching ATC codes to drugs and indications
+
+```{r}
+
+temp_matches <- sampled_side_effects |> 
+  distinct(drug_name, atc_codes)
+
+# Perform a left join to assign atc_code to each drug in indications_sample
+indications_sample <- indications_sample |> 
+  left_join(temp_matches, by = "drug_name")
 
 ```
 
@@ -637,4 +649,154 @@ ocde <- ocde |>
            extra = "merge") |> 
   filter(nchar(Varcode) == 1) |> 
   clean_names()
+```
+
+## Accessing side effects
+
+Lets look at drug categories? the following shiny app allows us to interact with the data we scraped and see the side effects and indications sorted by ATC code or specific pharmaceutical drug as well as the ranking of OECD countries by their intake. 
+
+```{r we make a cool dashboard}
+# Install required packages if not already installed
+if (!requireNamespace("shiny", quietly = TRUE)) {
+  install.packages("shiny")
+}
+if (!requireNamespace("plotly", quietly = TRUE)) {
+  install.packages("plotly")
+}
+if (!requireNamespace("dplyr", quietly = TRUE)) {
+  install.packages("dplyr")
+}
+if (!requireNamespace("htmlwidgets", quietly = TRUE)) {
+  install.packages("htmlwidgets")
+}
+
+# Load required libraries
+library(shiny)
+library(plotly)
+library(dplyr)
+library(htmlwidgets)
+
+# Define UI
+ui <- fluidPage(
+  titlePanel("Interactive Dashboard with ATC Codes"),
+  sidebarLayout(
+    sidebarPanel(
+      selectInput("atc_codes", "Select ATC Code:", choices = unique(sampled_side_effects$atc_codes)),
+      selectInput("selected_drug", "Select Drug:", choices = c(NULL, unique(sampled_side_effects$drug_name))),
+      width = 3
+    ),
+    mainPanel(
+      tabsetPanel(
+        tabPanel("Drug side effects and indications", 
+                 tableOutput("top_drug_names"),
+                 tableOutput("indications_table")),  
+        # New table for indications
+        tabPanel("Top 10 Side Effects", plotlyOutput("top_side_effects_chart")),
+        tabPanel("Country ranking by population intake", plotlyOutput("country_ranking_chart"))
+      ),
+      width = 9
+    )
+  )
+)
+
+# Define server
+server <- function(input, output, session) {
+  
+  # Reactive function for available drugs based on selected ATC code
+  observe({
+    atc_filtered_drugs <- if (!is.null(input$atc_codes)) {
+      sampled_side_effects |>
+        filter(atc_codes == input$atc_codes) |>
+        select(drug_name) |>
+        unique()
+    } else {
+      NULL
+    }
+    
+    drug_choices <- c("No selection", atc_filtered_drugs$drug_name)
+    
+    updateSelectInput(session, "selected_drug", choices = drug_choices)
+  })
+  
+  # Filter side effects data based on user input
+  filtered_side_effects_data <- reactive({
+    if (!is.null(input$selected_drug) && input$selected_drug != "No selection") {
+      sampled_side_effects |>
+        filter(atc_codes == input$atc_codes, drug_name == input$selected_drug)
+    } else {
+      sampled_side_effects |>
+        filter(atc_codes == input$atc_codes)
+    }
+  })
+  
+  # Filter indications data based on user input
+  filtered_indications_data <- reactive({
+    if (!is.null(input$selected_drug) && input$selected_drug != "No selection") {
+      indications_sample |>
+        filter(atc_codes == input$atc_codes, drug_name == input$selected_drug)
+    } else {
+      indications_sample |>
+        filter(atc_codes == input$atc_codes)
+    }
+  })
+  
+  # Top 10 drug names with most side effects
+  output$top_drug_names <- renderTable({
+    top_drug_names <- filtered_side_effects_data() |>
+      group_by(drug_name) |>
+      summarize(side_effect_count = n()) |>
+      arrange(desc(side_effect_count)) |>
+      head(10)
+    top_drug_names
+  })
+  
+  # Table of indications ordered from most to least common
+  output$indications_table <- renderTable({
+    indications_table <- filtered_indications_data() |>
+      group_by(indication) |>
+      summarize(indications_count = sum(1)) |>
+      arrange(desc(indications_count))
+    indications_table
+  })
+  
+  # Top 10 side effects bar chart with count * mean(ass_value)
+  output$top_side_effects_chart <- renderPlotly({
+    top_side_effects <- filtered_side_effects_data() |>
+      group_by(side_effect) |>
+      summarize(count_times_mean = n() * mean(ass_value)) |>
+      arrange(desc(count_times_mean)) |>
+      head(10)
+    
+    # Sort the data frame from largest to smallest
+    top_side_effects <- top_side_effects[order(top_side_effects$count_times_mean, decreasing = TRUE), ]
+    
+    plot_ly(top_side_effects, x = ~side_effect, y = ~count_times_mean, type = 'bar') |>
+      layout(title = "Top Side Effects)",
+             xaxis = list(title = "Side Effect"),
+             yaxis = list(title = "Count * Mean ass_value"))
+  })
+  
+  # Filter OCDE data based on user input
+  filtered_ocde_data <- reactive({
+    ocde |>
+      filter(varcode == input$atc_codes)
+  })
+   
+  # Country ranking bar chart
+  output$country_ranking_chart <- renderPlotly({
+    country_ranking <- filtered_ocde_data() |>
+      group_by(country) |>
+      summarize(max_value = max(value)) |>
+      arrange(desc(max_value))
+    
+    plot_ly(country_ranking, x = ~country, y = ~max_value, type = 'bar') |>
+      layout(title = "Country Ranking",
+             xaxis = list(title = "Country"),
+             yaxis = list(title = "Daily Dosage per 1k inhabitants per day"))
+  })
+}
+
+# Run the application
+shinyApp(ui = ui, server = server)
+
 ```
