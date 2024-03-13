@@ -4,17 +4,17 @@ format: html
 editor: visual
 ---
 
--   Pregunta de investigación // objetivos
+## Introduction
 
--   las categorías ATC de los side effects de SIDER no coinciden al 100% con las de OCDE: SIDER incluye 5 más (D, L, P, S, V).
+In the culmination of our Data Harvesting course, our focus turns to the landscape of pharmaceuticals. Our project aims to provide a descriptive analysis of drug side effects and indications across various pharmaceuticals and draw connections to OECD countries, grounded in the consumption patterns of distinct drug classes.
 
--   atc codes and recodification: cambiar de sampled_matches a matches.
+Our primary data source is SIDER, a website that meticulously compiles information on marketed medicines and their associated adverse drug reactions. Extracted from public documents and package inserts, SIDER furnishes us with essential details such as side effect frequencies, drug classifications, and relevant links for further exploration, including drug--target relations.
 
--   recodification: introducción
+By using the OECD's open data portal, we aim to enrich our analysis by incorporating data on pharmaceutical consumption. This amalgamation of SIDER and OECD datasets is anticipated to give us insights into the prevalence of side effects, whilst making this information more accessible.
 
--   visualización lo q sea
+To navigate the web-based data retrieval process, we employ web scraping techniques and leverage RSelenium in order to interact with different elements in the website that will allow us to access the data. Subsequently, we engage in meticulous data wrangling to refine our raw data, preparing it for clear and concise visualizations.
 
-We start by uploading the packages we are going to need
+Our project aspires to offer straightforward access to pharmaceutical information, whilst also allowing us to put our data harvesting skills to the test.
 
 ```{r echo=FALSE}
 library(scrapex)
@@ -31,13 +31,13 @@ library(tidyverse)
 
 ```
 
-From now on, `sider_link` is the name we have assigned to the general page we are scraping the data from. However, mirar como explico esto xq no idea.
+### The very first step
+
+We know the web we want to get data from. So we must define this within our programing environment. From now on, `sider_link` is the name we have assigned to the general page we are scraping the data from.
 
 ```{r}
 sider_link<- "http://sideeffects.embl.de/drugs/"
 ```
-
-docker pull selenium/standalone-firefox:2.53.0 sido docker -d -p 4445:4444 selenium/standalone-firefox:2.53.0
 
 ## Setting up Selenium browser
 
@@ -53,14 +53,14 @@ Selenium is a powerful automation tool that can be used for web scraping tasks. 
 
 ```{r attach Java}
 # Sys.getenv("JAVA_HOME")
-# Sys.setenv(JAVA_HOME = "C:/Program Files (x86)/Common Files/Oracle/ava/javapath/java.exe") 
-# Sys.getenv("PATH")
-# install.packages("RSelenium", dependencies=TRUE)
+Sys.setenv(JAVA_HOME = "C:/Program Files (x86)/Common Files/Oracle/ava/javapath/java.exe") 
+Sys.getenv("PATH")
+install.packages("RSelenium", dependencies=TRUE)
 ```
 
 Before proceeding with the next code chunk, we quit and restart R.
 
-`RSelenium` simulates human behavior by opening a browser. In RSelenium, this is accomplished using the `rsDriver` function, which initializes the browser and opens it for us. It does so by using a port, which is a numerical identifier that represent communication channels between computers. When deploying a Docker image, we assign it a port through which it can communicate with other systems.
+`RSelenium` simulates what we would do in a webpage by opening a browser. In RSelenium, this is accomplished using the `rsDriver` function, which initializes the browser and opens it for us. It does so by using a port, which is a numerical identifier that represent communication channels between computers. When deploying a Docker image, we assign it a port through which it can communicate with other systems.
 
 The output of the following code will indicate the drivers that are currently being downloaded. This is essential for ensuring that the necessary drivers are available for the web browser to function correctly during the web scraping process.
 
@@ -84,7 +84,7 @@ remDr$client$navigate(sider_link)
 driver <- remDr$client
 ```
 
-## Navigating our site
+### Navigating our site
 
 [SIDER 4.1: Side Effect Resource](http://sideeffects.embl.de/) is a web page that contains information on marketed medicines and their recorded adverse drug reactions. The information is extracted from public documents and package inserts. The available information include side effect frequency, drug and side effect classifications as well as links to further information, for example drug--target relations. The *Drug list* section includes an option to browse drugs by Anatomical Therapeutic Chemical (ATC) classification. It divides drugs into different groups according to the organ system on which they act and/or therapeutical, pharmacological and chemical characteristics. **INCLUIR UNA TABLA CON LOS QUE TIENEN?** These ATC classifications are organized into dropdown menus, which contain the items of interest.
 
@@ -349,7 +349,9 @@ We then iterate over each row of the "matches" table using a for loop. Within ea
 
 For each link, we scrape two tables (side effects and indications) following the process described in "Testing: individual tests". After processing, both the side effects and indications tables for each drug are stored in their respective lists (`side_effects_tables` and `indications_tables`).
 
-```{r final scraping. for loop}
+> **NOTE**: This step loops through 1117 links so please expect it to take a while. Further down this .qmd you will get theoption of running everything either on the complete scraped data or the sampled data. To run on the sampled data just turn eval = TRUE on the {r} at the top of the chunk.
+
+```{r final scraping. looping through our links}
 # Iterate over each row of the "matches" table
 for (i in seq_len(nrow(matches))) {
   # Get the medication name and link from the current row
@@ -476,20 +478,32 @@ extrct_ATC_codes  <- function(url) {
 
 This line of code applies the `extract_ATC_codes` function to each link in the `sampled_matches` dataset using `lapply`. It creates a new column named `atc_codes` in `sampled_matches`, where each entry corresponds to a list of ATC codes extracted from the respective link.
 
-```{r getting atc codes. applying function}
+```{r SAMPLE getting atc codes. applying function, eval=FALSE}
+
 sampled_matches$atc_codes <- lapply(sampled_matches$link,
                        extrct_ATC_codes)
+```
 
+```{r getting atc codes. applying function}
+
+matches$atc_codes <- lapply(matches$link,
+                       extrct_ATC_codes)
 ```
 
 This code modifies the `atc_codes` column in the `sampled_matches` dataset, keeping only the first letter of each ATC code. This action is taken because we are primarily interested in the main categories represented by these letters, as they align with the broader classifications used in the OCDE data. By retaining only the first letter, we aim to mitigate potential biases that could arise from analyzing subcategories, which are not covered comprehensively in the OCDE dataset.
 
-```{r getting atc codes. cleaning}
+```{r SAMPLE getting atc codes. cleaning, eval=FALSE}
 sampled_matches <- sampled_matches |> 
   mutate(atc_codes = substr(atc_codes, 1, 1))
 
 sampled_matches
+```
 
+```{r getting atc codes. cleaning}
+matches <- matches |> 
+  mutate(atc_codes = substr(atc_codes, 1, 1))
+
+head(matches)
 ```
 
 ## Using the data
@@ -519,9 +533,31 @@ We initially process rows containing numerical values in the 'data_for_drug' col
 
 Subsequently, we assign an 'ass_value' based on predefined frequency class ranges. This ensures that very frequent occurrences receive the highest value (5), very rare or zero occurrences receive the lowest (0), and any remaining frequencies are labeled as NA.
 
+```{r SAMPLE ass_values to numbers, eval=FALSE}
+
+
+filtered_rows <- side_effects_sample |> 
+  filter(grepl("-|%", data_for_drug) & !grepl(",", data_for_drug)) |> 
+  mutate(data_for_drug = gsub("%", "", data_for_drug)) |> 
+  separate(data_for_drug, into = c("min", "max"), sep = "-") |> 
+  mutate(across(c(min, max), ~as.numeric(.)*0.01)) |> 
+  mutate(occu_freq = ifelse(is.na(max), min,
+                            ifelse(is.na(min), max,
+                                   (min + max) / 2)) * 100 / 5) |> 
+  mutate(ass_value = case_when(
+    occu_freq > 2 ~ 5,
+    occu_freq >= 0.2 ~ 4,
+    occu_freq >= 0.02 ~ 2,
+    occu_freq >= 0.002 ~ 1,
+    occu_freq == 0 ~ 0,
+    TRUE ~ NA_real_
+  )) |> 
+  select(-c(min, max, occu_freq))
+```
+
 ```{r ass_values to numbers}
 # Filter rows based on the presence of '-' or '%' in data_for_drug and absence of ','
-filtered_rows <- side_effects_sample |> 
+filtered_rows <- side_effects |> 
   filter(grepl("-|%", data_for_drug) & !grepl(",", data_for_drug)) |> 
   mutate(data_for_drug = gsub("%", "", data_for_drug)) |> 
   separate(data_for_drug, into = c("min", "max"), sep = "-") |> 
@@ -554,9 +590,34 @@ extract_words <- function(text) {
 
 Afterward, we filter out rows with NA values or those containing the word "to" in the 'words_only' column. Then, we split the words before and after the comma into two new columns and assign numerical values to these words based on a predefined table. Any remaining frequencies are labeled as NA, and the mean value between both columns is calculated. Finally, the 'ass_value' column stores the final value, which is the rounded mean to the highest value.
 
+```{r SAMPLE ass_values to words, eval=FALSE}
+#filtered_rows2 <- side_effects_sample |> 
+  mutate(words_only = extract_words(data_for_drug)) |> 
+  filter(!is.na(words_only), 
+         words_only != "to") |> 
+# Splitting the words before and after the comma into two new columns
+  separate(words_only, into = c("words_only", "after_comma"#), 
+           sep = ",", 
+           remove = FALSE) |> 
+  mutate(across(c(after_comma), trimws),
+         across(c(words_only, after_comma), 
+                ~ case_when(
+                  . %in% c("very frequent", "very common") ~ 5,
+                  . %in% c("frequent", "common") ~ 4,
+                  . == "infrequent" ~ 3,
+                  . %in% c("rare", "uncommon") ~ 2,
+ . %in% c("very rare", "very uncommon") ~ 1,
+                  TRUE ~ NA_real_)),
+         mean_value = (words_only + after_comma) / 2,
+         ass_value = ifelse(is.na(mean_value), words_only, ceiling(mean_value))) |> 
+  select(-c(words_only, after_comma, mean_value, data_for_drug))
+
+```
+
 ```{r ass_values to words}
+
 # Apply the function to the data_for_drug column
-filtered_rows2 <- side_effects_sample |> 
+filtered_rows2 <- side_effects |> 
   mutate(words_only = extract_words(data_for_drug)) |> 
   filter(!is.na(words_only), 
          words_only != "to") |> 
@@ -581,13 +642,25 @@ filtered_rows2 <- side_effects_sample |>
 
 This meticulous process ensures a consistent representation of side effects frequency and associated values for further analysis. To complete the data preparation, we combine these two datasets and merge them with the 'matches' dataset. In the final 'side_effects' table, we remove rows where 'ass_value' contains missing values and eliminate variables unnecessary for data analysis, such as 'html', 'link', and 'drug_id'.
 
-```{r final side_effects}
-# Bind and merge
+```{r SAMPLE final side_effects, eval=FALSE}
+## Bind and merge
 sampled_side_effects <- bind_rows(filtered_rows, filtered_rows2)
 sampled_side_effects <- merge(sampled_matches, sampled_side_effects, by = "drug_name", all = TRUE)
 
 # Filter and clean side_effects
 sampled_side_effects <- sampled_side_effects |> 
+  na.omit(ass_values) |> 
+  select(-c(hmtl, link, drug_id)) |> 
+  arrange(atc_codes)
+```
+
+```{r final side_effects}
+# Bind and merge
+side_effects <- bind_rows(filtered_rows, filtered_rows2)
+side_effects <- merge(matches, side_effects, by = "drug_name", all = TRUE)
+
+# Filter and clean side_effects
+side_effects <- side_effects |> 
   na.omit(ass_values) |> 
   #select(-c(hmtl, link, drug_id)) |> 
   arrange(atc_codes)
@@ -596,13 +669,20 @@ sampled_side_effects <- sampled_side_effects |>
 
 #### Matching ATC codes to drugs and indications
 
-```{r}
+```{r SAMPLE match the ATC codes to indications}
+# Perform a left join to assign atc_code to each drug in indications_sample
+indications_sample <- indications_sample |> 
+  left_join(temp_matches, by = "drug_name")
+
+```
+
+```{r match the ATC codes to indications}
 
 temp_matches <- sampled_side_effects |> 
   distinct(drug_name, atc_codes)
 
 # Perform a left join to assign atc_code to each drug in indications_sample
-indications_sample <- indications_sample |> 
+indications <- indications|> 
   left_join(temp_matches, by = "drug_name")
 
 ```
@@ -640,20 +720,20 @@ In their website they have a 'Data explorer**'** that allows you to pick variabl
 ocde <- read.csv("HEALTH_PHMC.csv")
 
 ocde <- ocde |> 
-  select(-c(VAR, UNIT, Measure, YEA, Flag.Codes, Flags)) |> 
+  select(-c(VAR, UNIT, Measure, YEA, Flag.Codes, Flags)) |>
   filter(Year == 2021) |> 
   rename(ISO = COU) |> 
   separate(Variable, 
-           into = c("Varcode", "Variable"), 
+           into = c("atc_codes", "Variable"), 
            sep = "-", 
            extra = "merge") |> 
-  filter(nchar(Varcode) == 1) |> 
-  clean_names()
+  filter(nchar(atc_codes) == 1) |> 
+  clean_names() 
 ```
 
 ## Accessing side effects
 
-Lets look at drug categories? the following shiny app allows us to interact with the data we scraped and see the side effects and indications sorted by ATC code or specific pharmaceutical drug as well as the ranking of OECD countries by their intake. 
+Lets look at drug categories? the following shiny app allows us to interact with the data we scraped and see the side effects and indications sorted by ATC code or specific pharmaceutical drug as well as the ranking of OECD countries by their intake.
 
 ```{r we make a cool dashboard}
 # Install required packages if not already installed
@@ -705,7 +785,7 @@ server <- function(input, output, session) {
   # Reactive function for available drugs based on selected ATC code
   observe({
     atc_filtered_drugs <- if (!is.null(input$atc_codes)) {
-      sampled_side_effects |>
+      side_effects |>
         filter(atc_codes == input$atc_codes) |>
         select(drug_name) |>
         unique()
@@ -721,10 +801,10 @@ server <- function(input, output, session) {
   # Filter side effects data based on user input
   filtered_side_effects_data <- reactive({
     if (!is.null(input$selected_drug) && input$selected_drug != "No selection") {
-      sampled_side_effects |>
+      side_effects |>
         filter(atc_codes == input$atc_codes, drug_name == input$selected_drug)
     } else {
-      sampled_side_effects |>
+      side_effects |>
         filter(atc_codes == input$atc_codes)
     }
   })
@@ -735,7 +815,7 @@ server <- function(input, output, session) {
       indications_sample |>
         filter(atc_codes == input$atc_codes, drug_name == input$selected_drug)
     } else {
-      indications_sample |>
+      indications |>
         filter(atc_codes == input$atc_codes)
     }
   })
@@ -798,5 +878,91 @@ server <- function(input, output, session) {
 
 # Run the application
 shinyApp(ui = ui, server = server)
+
+```
+
+## *Visualization*
+
+For our first visualization, we created an interactive map. Our process began with data cleaning, which involved merging the OCDE dataset with the indications and side_effects tables. Due to the complexity of the data for direct mapping, we made several decisions to streamline the information:
+
+-   We retained only the ATC code with the highest value for each country. This allowed us to focus on the most significant medication usage within each country.
+-   Within each ATC code, we identified the drug with the highest number of indications. This helped prioritize drugs that are widely prescribed or used for diverse medical conditions.
+-   For each selected drug, we filtered out side effects with a frequency equal to or higher than 4. This ensured we focused on the most common and potentially significant side effects.
+-   From the filtered side effects, we randomly chose 5 to include in the visualization. This approach provided a representative sample of side effects associated with each drug.
+
+```{r data for map}
+# Prepare ocde data
+ocde_max <- ocde |> 
+  group_by(iso) |> 
+  mutate(max_value = max(value))|> 
+  filter(value == max_value) |> 
+  select(country, iso, atc_codes, variable, max_value) 
+
+# Get the drug with the most indications
+max_indications_drug <- indications_sample |> 
+  group_by(drug_name) |> 
+  summarize(total_indications = n()) |> 
+  inner_join(sampled_side_effects, by = "drug_name") |> 
+  group_by(atc_codes) |> 
+  filter(total_indications == max(total_indications),
+         ass_value >= 4)
+
+# Join with ocde data 
+map <- ocde_max |> 
+  inner_join(max_indications_drug, by = "atc_codes") |> 
+  group_by(country) |> 
+  mutate(drug_name = if (any(atc_codes == "C") & n_distinct(drug_name) > 1) sample(drug_name, 1) else drug_name) |> 
+  ungroup() |> 
+  group_by(country, atc_codes, drug_name) |> 
+  slice_sample(n = 5, replace = FALSE)
+```
+
+Now we can make the map.
+
+```{r}
+# Install and load necessary packages if you haven't already
+# install.packages("leaflet")
+install.packages("rnaturalearth")
+install.packages("rnaturalearthdata")
+library(leaflet)
+library(rnaturalearth)
+library(rnaturalearthdata)
+
+# Load world map data
+world_map <- ne_countries(returnclass = "sf")
+
+# Merge with our data
+world_map <- left_join(world_map, map, 
+                       by = c("name" = "country"))
+
+# Create popup content for each country
+popup_content <- lapply(1:nrow(world_map), function(i) {
+  country <- world_map$name[i]
+  drug_name <- world_map$drug_name[i]
+  side_effects <- world_map$side_effect[world_map$name == country]
+  variable <- world_map$variable[i]
+  
+  content <- paste("<strong>Country:</strong>", country, "<br>",
+                   "<strong>Drug Name:</strong>", drug_name, "<br>",
+                   "<strong>Side Effects:</strong>", paste(side_effects, collapse = ", "), "<br>",
+                   "<strong>Use:</strong>", variable, "<br>")
+  return(content)
+})
+
+
+# Color palette based on value
+colors <- colorNumeric(palette = "viridis", domain = world_map$max_value)
+
+
+# Map
+leaflet(data = world_map) |> 
+  setView(lng = 20, lat = 30, zoom = 1.4) |> 
+  addProviderTiles("OpenStreetMap.Mapnik") |> 
+  addPolygons(fillColor = ~colors(max_value),
+              fillOpacity = 0.7,
+              weight = 1,
+              popup = popup_content,
+              highlightOptions = highlightOptions(color = "black", weight = 2, bringToFront = TRUE))
+
 
 ```
